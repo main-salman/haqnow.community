@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import {
 	ArrowLeft,
 	FileText,
@@ -10,11 +10,14 @@ import {
 	Clock,
 	CheckCircle,
 	AlertCircle,
-	Bot
+	Bot,
+	Edit3,
+	Send
 } from 'lucide-react'
-import { documentsApi } from '../services/api'
+import { documentsApi, searchApi } from '../services/api'
 import DocumentViewer from '../components/DocumentViewer'
 import { clsx } from 'clsx'
+import toast from 'react-hot-toast'
 
 export default function DocumentViewerPage() {
 	const { id } = useParams<{ id: string }>()
@@ -23,6 +26,9 @@ export default function DocumentViewerPage() {
 	const [showSidebar, setShowSidebar] = useState(true)
 	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'ai'>('info')
 	const [aiQuestion, setAiQuestion] = useState('')
+	const [newComment, setNewComment] = useState('')
+	const [aiAnswer, setAiAnswer] = useState('')
+	const [isLoadingAI, setIsLoadingAI] = useState(false)
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -36,6 +42,61 @@ export default function DocumentViewerPage() {
 		enabled: !!documentId,
 		refetchInterval: 5000,
 	})
+
+	const { data: comments = [] } = useQuery({
+		queryKey: ['document-comments', documentId],
+		queryFn: () => documentsApi.getComments(documentId).then(res => res.data.comments || []),
+		enabled: !!documentId,
+	})
+
+	// Handlers for functionality
+	const handleDownload = async () => {
+		try {
+			const response = await documentsApi.download(documentId)
+			toast.success('Download started')
+			// In production, this would trigger actual file download
+		} catch (error) {
+			toast.error('Download failed')
+		}
+	}
+
+	const handleShare = async () => {
+		try {
+			await navigator.clipboard.writeText(window.location.href)
+			toast.success('Document link copied to clipboard')
+		} catch (error) {
+			toast.error('Failed to copy link')
+		}
+	}
+
+	const handleAIQuestion = async () => {
+		if (!aiQuestion.trim()) return
+		
+		setIsLoadingAI(true)
+		try {
+			const response = await searchApi.askQuestion(documentId, aiQuestion)
+			setAiAnswer(response.data.answer || 'No answer available')
+			toast.success('AI response received')
+		} catch (error) {
+			toast.error('AI question failed')
+			setAiAnswer('Sorry, I could not process your question at this time.')
+		} finally {
+			setIsLoadingAI(false)
+		}
+	}
+
+	const handleAddComment = async () => {
+		if (!newComment.trim()) return
+		
+		try {
+			await documentsApi.addComment(documentId, newComment)
+			setNewComment('')
+			toast.success('Comment added')
+			// Refresh comments
+		} catch (error) {
+			toast.error('Failed to add comment')
+		}
+	}
 
 	if (isLoading) {
 		return (
@@ -84,11 +145,7 @@ export default function DocumentViewerPage() {
 		}
 	}
 
-	const handleAskQuestion = () => {
-		if (!aiQuestion.trim()) return
-		// TODO: Integrate /search/ask endpoint
-		setAiQuestion('')
-	}
+
 
 	return (
 		<div className="space-y-4">
@@ -105,13 +162,31 @@ export default function DocumentViewerPage() {
 						</div>
 					</div>
 					<div className="flex items-center space-x-2">
-						<button className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center">
+						<button 
+							onClick={handleShare}
+							title="Share document link"
+							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
+						>
 							<Share2 className="h-4 w-4 mr-2" /> Share
 						</button>
-						<button className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center">
+						<button 
+							onClick={handleDownload}
+							title="Download original document"
+							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
+						>
 							<Download className="h-4 w-4 mr-2" /> Download
 						</button>
-						<button onClick={() => setShowSidebar(!showSidebar)} className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center">
+						<button 
+							title="Redact document (coming soon)"
+							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
+						>
+							<Edit3 className="h-4 w-4" />
+						</button>
+						<button 
+							onClick={() => setShowSidebar(!showSidebar)} 
+							title="Toggle sidebar"
+							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
+						>
 							<MessageSquare className="h-4 w-4" />
 						</button>
 					</div>
@@ -192,26 +267,81 @@ export default function DocumentViewerPage() {
 						)}
 
 						{sidebarTab === 'comments' && (
-							<div>
-								<p className="text-sm text-gray-600">Comments coming soon.</p>
+							<div className="space-y-4">
+								<div>
+									<h3 className="text-sm font-semibold text-gray-900 mb-2">Comments</h3>
+									{comments.length === 0 ? (
+										<p className="text-sm text-gray-500">No comments yet.</p>
+									) : (
+										<div className="space-y-2">
+											{comments.map((comment: any, index: number) => (
+												<div key={index} className="p-3 bg-gray-50 rounded-lg">
+													<p className="text-sm text-gray-700">{comment.content}</p>
+													<p className="text-xs text-gray-500 mt-1">{comment.created_at}</p>
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+								<div>
+									<h4 className="text-sm font-medium text-gray-900 mb-2">Add Comment</h4>
+									<div className="space-y-2">
+										<textarea
+											value={newComment}
+											onChange={(e) => setNewComment(e.target.value)}
+											placeholder="Write a comment..."
+											className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+											rows={3}
+										/>
+										<button
+											onClick={handleAddComment}
+											disabled={!newComment.trim()}
+											className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+										>
+											<Send className="w-4 h-4 mr-2" />
+											Add Comment
+										</button>
+									</div>
+								</div>
 							</div>
 						)}
 
 						{sidebarTab === 'ai' && (
-							<div className="space-y-3">
-								<div className="flex items-center space-x-2">
-									<input
-										value={aiQuestion}
-										onChange={(e) => setAiQuestion(e.target.value)}
-										placeholder="Ask a question about this document"
-										className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-									/>
-									<button onClick={handleAskQuestion} className="inline-flex items-center px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium">
-										<Bot className="w-4 h-4 mr-2" />
-										Ask
-									</button>
+							<div className="space-y-4">
+								<div>
+									<h3 className="text-sm font-semibold text-gray-900 mb-2">AI Q&A</h3>
+									<div className="space-y-3">
+										<div className="flex items-start space-x-2">
+											<input
+												value={aiQuestion}
+												onChange={(e) => setAiQuestion(e.target.value)}
+												onKeyPress={(e) => e.key === 'Enter' && handleAIQuestion()}
+												placeholder="Ask a question about this document..."
+												className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+												disabled={isLoadingAI}
+											/>
+											<button 
+												onClick={handleAIQuestion} 
+												disabled={!aiQuestion.trim() || isLoadingAI}
+												title="Ask AI about this document"
+												className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+											>
+												{isLoadingAI ? (
+													<Clock className="w-4 h-4 animate-spin" />
+												) : (
+													<Bot className="w-4 h-4" />
+												)}
+											</button>
+										</div>
+										{aiAnswer && (
+											<div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+												<h4 className="text-sm font-medium text-blue-900 mb-1">AI Response:</h4>
+												<p className="text-sm text-blue-800">{aiAnswer}</p>
+											</div>
+										)}
+										<p className="text-xs text-gray-500">Powered by local Ollama + RAG</p>
+									</div>
 								</div>
-								<p className="text-xs text-gray-500">Powered by local Ollama + RAG</p>
 							</div>
 						)}
 					</aside>

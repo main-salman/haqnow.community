@@ -41,10 +41,11 @@ export default function DocumentViewer({
       element: viewerRef.current,
       prefixUrl: '/openseadragon-images/',
       tileSources: {
-        type: 'zoomifytileservice',
-        width: 2000, // Placeholder dimensions
-        height: 3000,
-        tilesUrl: `/api/documents/${documentId}/tiles/page_${pageNumber}/`,
+        type: 'image',
+        url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
+        width: 800,
+        height: 1000,
+        buildPyramid: false,
       },
       showNavigationControl: false,
       showZoomControl: false,

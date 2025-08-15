@@ -68,6 +68,19 @@ export const documentsApi = {
       content_type: contentType,
       size,
     }),
+  download: (id: number) => axios.get(`/api/documents/${id}/download`),
+  getComments: (id: number) => axios.get(`/api/documents/${id}/comments`),
+  addComment: (id: number, comment: string) => 
+    axios.post(`/api/documents/${id}/comments`, { content: comment }),
+  export: (id: number, options: { format: string; pages?: number[] }) =>
+    axios.post(`/api/documents/${id}/export`, options),
+}
+
+// Search API
+export const searchApi = {
+  search: (query: string) => axios.get(`/api/search/?q=${encodeURIComponent(query)}`),
+  askQuestion: (documentId: number, question: string) =>
+    axios.post('/api/search/ask', { document_id: documentId, question }),
 }
 
 // Admin API

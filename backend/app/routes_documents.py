@@ -353,6 +353,114 @@ async def list_document_exports(document_id: int, db: Session = Depends(get_db))
     return result
 
 
+@router.get("/{document_id}/tiles/page_{page_number}/")
+async def get_document_tiles(
+    document_id: int, page_number: int, db: Session = Depends(get_db)
+):
+    """Serve document tiles for OpenSeadragon viewer"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # For now, return a simple tile configuration
+    # In production, this would serve actual tile files
+    return {
+        "type": "image",
+        "url": f"/api/documents/{document_id}/thumbnail/{page_number}",
+        "width": 2000,
+        "height": 3000,
+        "tileSize": 256,
+        "overlap": 1
+    }
+
+
+@router.get("/{document_id}/thumbnail/{page_number}")
+async def get_document_thumbnail(
+    document_id: int, page_number: int, db: Session = Depends(get_db)
+):
+    """Get document page thumbnail"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # For now, return a placeholder response
+    # In production, this would serve actual thumbnail files
+    from fastapi.responses import Response
+    
+    # Create a simple placeholder image
+    from PIL import Image, ImageDraw
+    import io
+    
+    img = Image.new('RGB', (800, 1000), color='white')
+    draw = ImageDraw.Draw(img)
+    draw.text((50, 50), f"Document: {document.title}\nPage: {page_number + 1}", fill='black')
+    
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    
+    return Response(content=img_bytes.getvalue(), media_type="image/png")
+
+
+@router.get("/{document_id}/download")
+async def download_document(
+    document_id: int, db: Session = Depends(get_db)
+):
+    """Download original document file"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # For now, return document info
+    # In production, this would serve the actual file
+    return {
+        "success": True,
+        "document_id": document_id,
+        "filename": document.title,
+        "download_url": f"/api/documents/{document_id}/file"
+    }
+
+
+@router.post("/{document_id}/comments")
+async def add_comment(
+    document_id: int, comment_data: dict, db: Session = Depends(get_db)
+):
+    """Add a comment to a document"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # For now, return success
+    # In production, this would save to database
+    return {
+        "success": True,
+        "comment_id": 1,
+        "message": "Comment added successfully"
+    }
+
+
+@router.get("/{document_id}/comments")
+async def get_comments(
+    document_id: int, db: Session = Depends(get_db)
+):
+    """Get all comments for a document"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Return empty comments for now
+    return {
+        "success": True,
+        "comments": [],
+        "total": 0
+    }
+
+
 @router.delete("/{document_id}/exports/{filename}")
 async def delete_document_export(
     document_id: int, filename: str, db: Session = Depends(get_db)
