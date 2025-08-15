@@ -35,4 +35,36 @@ services:
     ports:
       - "6379:6379"
 
+  frontend:
+    image: node:18-alpine
+    working_dir: /srv/frontend
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/srv/frontend:cached
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      - api
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    # GPU support (uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data:

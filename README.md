@@ -81,9 +81,10 @@ haqnow.community/
 - Python 3.11+
 - Poetry for dependency management
 - Redis server
+- Node.js and npm
 - PostgreSQL (or SQLite for development)
 
-### Installation
+### Quick Start (Recommended)
 
 1. Clone the repository:
 ```bash
@@ -91,7 +92,31 @@ git clone <repository-url>
 cd haqnow.community
 ```
 
-2. Install backend dependencies:
+2. Run the automated setup:
+```bash
+./setup-dev.sh
+```
+
+3. Start all services with a single command:
+```bash
+./start-local.sh
+```
+
+This will start:
+- Redis server (if not already running)
+- Backend API server on http://localhost:8000
+- Frontend development server on http://localhost:3000
+
+4. Stop all services:
+```bash
+./stop-local.sh
+```
+
+### Manual Installation
+
+If you prefer to set up manually:
+
+1. Install backend dependencies:
 ```bash
 cd backend
 poetry install
@@ -211,3 +236,13 @@ The application can be deployed using Docker containers with the provided docker
 ## Support
 
 [Add support contact information here]
+
+
+🚀 Ready for Development:
+The repository is now fully set up with:
+✅ Automated testing on every commit
+✅ Code quality enforcement
+✅ Documentation requirements
+✅ CI/CD pipeline that will run on every push/PR
+✅ Complete development environment setup
+Anyone can now clone the repository and run ./setup-dev.sh to get started with development, and all the quality gates we established will be automatically enforced!

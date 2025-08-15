@@ -10,5 +10,5 @@ output "public_ip" {
 
 output "private_ip" {
   description = "Private IP address"
-  value       = exoscale_compute_instance.main.private_network_ip_address
+  value       = exoscale_compute_instance.main.ip_address
 }

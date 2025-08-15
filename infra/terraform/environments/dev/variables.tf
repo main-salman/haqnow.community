@@ -10,10 +10,16 @@ variable "exoscale_api_secret" {
   sensitive   = true
 }
 
-variable "zone" {
+variable "exoscale_zone" {
   description = "Exoscale zone"
   type        = string
   default     = "ch-gva-2"
+}
+
+variable "name_prefix" {
+  description = "Prefix for all resource names"
+  type        = string
+  default     = "haqnow-community-dev"
 }
 
 variable "instance_type" {
@@ -28,10 +34,9 @@ variable "disk_size" {
   default     = 200
 }
 
-variable "ssh_key_name" {
-  description = "SSH key name for VM access"
+variable "ssh_key" {
+  description = "SSH public key for VM access"
   type        = string
-  default     = "haqnow-dev"
 }
 
 variable "db_plan" {

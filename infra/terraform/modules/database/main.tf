@@ -12,22 +12,6 @@ resource "exoscale_database" "postgres" {
   name = "haqnow-community-${var.tags.Environment}"
   type = "pg"
   plan = var.plan
-  
-  pg_settings = {
-    version = var.pg_version
-  }
-  
-  backup_schedule = var.backup_schedule
-  
-  labels = var.tags
-}
-
-# Create database user
-resource "exoscale_database_user" "app_user" {
-  zone     = var.zone
-  database = exoscale_database.postgres.id
-  username = "haqnow_app"
-  password = random_password.app_user_password.result
 }
 
 # Generate random password for app user

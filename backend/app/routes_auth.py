@@ -1,10 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from .db import get_db, Base, engine
-from .models import User, ApiKey
-from .schemas import UserCreate, UserOut, LoginRequest, MfaVerifyRequest, TokenResponse, ApiKeyCreate, ApiKeyResponse, ApiKeyOut
-from .security import hash_password, verify_password, generate_totp_secret, verify_totp, create_jwt, generate_api_key
 
+from .db import Base, engine, get_db
+from .models import ApiKey, User
+from .schemas import (
+    ApiKeyCreate,
+    ApiKeyOut,
+    ApiKeyResponse,
+    LoginRequest,
+    MfaVerifyRequest,
+    TokenResponse,
+    UserCreate,
+    UserOut,
+)
+from .security import (
+    create_jwt,
+    generate_api_key,
+    generate_totp_secret,
+    hash_password,
+    verify_password,
+    verify_totp,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,8 +40,8 @@ def admin_create_user(payload: UserCreate, db: Session = Depends(get_db)):
         full_name=payload.full_name,
         role=payload.role,
         password_hash=hash_password(payload.password),
-        totp_secret=generate_totp_secret(),
-        mfa_enabled=True,
+        totp_secret=None,  # MFA not set up initially
+        mfa_enabled=False,  # MFA disabled by default
     )
     db.add(user)
     db.commit()
@@ -44,7 +60,16 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"mfa_required": user.mfa_enabled}
+
+    # If MFA is not enabled, return token directly
+    if not user.mfa_enabled:
+        token = create_jwt(
+            {"sub": str(user.id), "email": user.email, "role": user.role}
+        )
+        return {"access_token": token, "mfa_required": False}
+
+    # If MFA is enabled, require MFA verification
+    return {"mfa_required": True}
 
 
 @router.post("/mfa/verify", response_model=TokenResponse)
@@ -56,6 +81,97 @@ def mfa_verify(payload: MfaVerifyRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid code")
     token = create_jwt({"sub": str(user.id), "email": user.email, "role": user.role})
     return TokenResponse(access_token=token)
+
+
+@router.post("/mfa/setup")
+def mfa_setup(db: Session = Depends(get_db)):
+    """
+    Generate TOTP secret for MFA setup.
+    TODO: Add authentication middleware to get current user
+    """
+    # For now, assume user ID 1 - this should be replaced with proper auth
+    user = db.query(User).filter(User.id == 1).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Generate new TOTP secret
+    totp_secret = generate_totp_secret()
+    user.totp_secret = totp_secret
+    db.commit()
+
+    # Return secret and QR code data
+    import base64
+    import io
+
+    import qrcode
+
+    # Generate QR code for TOTP setup
+    totp_uri = f"otpauth://totp/Haqnow:{user.email}?secret={totp_secret}&issuer=Haqnow"
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(totp_uri)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_code_data = base64.b64encode(buffer.getvalue()).decode()
+
+    return {
+        "secret": totp_secret,
+        "qr_code": f"data:image/png;base64,{qr_code_data}",
+        "manual_entry_key": totp_secret,
+    }
+
+
+@router.post("/mfa/enable")
+def mfa_enable(payload: MfaVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Enable MFA after verifying the setup code.
+    TODO: Add authentication middleware to get current user
+    """
+    # For now, assume user ID 1 - this should be replaced with proper auth
+    user = db.query(User).filter(User.id == 1).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.totp_secret:
+        raise HTTPException(status_code=400, detail="MFA setup not initiated")
+
+    # Verify the code
+    if not verify_totp(payload.code, user.totp_secret):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    # Enable MFA
+    user.mfa_enabled = True
+    db.commit()
+
+    return {"message": "MFA enabled successfully"}
+
+
+@router.post("/mfa/disable")
+def mfa_disable(payload: MfaVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Disable MFA after verifying current code.
+    TODO: Add authentication middleware to get current user
+    """
+    # For now, assume user ID 1 - this should be replaced with proper auth
+    user = db.query(User).filter(User.id == 1).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA is not enabled")
+
+    # Verify the code
+    if not verify_totp(payload.code, user.totp_secret):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    # Disable MFA
+    user.mfa_enabled = False
+    user.totp_secret = None
+    db.commit()
+
+    return {"message": "MFA disabled successfully"}
 
 
 @router.post("/admin/api-keys", response_model=ApiKeyResponse)
@@ -90,5 +206,3 @@ def admin_revoke_api_key(key_id: int, db: Session = Depends(get_db)):
     api_key.is_active = False
     db.commit()
     return {"message": "API key revoked"}
-
-

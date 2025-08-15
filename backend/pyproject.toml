@@ -20,6 +20,14 @@ redis = "^5.0.1"
 pillow = "^10.4.0"
 pymupdf = "^1.24.10"
 pytesseract = "^0.3.13"
+ollama = "^0.3.3"
+chromadb = "^0.5.15"
+sentence-transformers = "^3.3.1"
+langchain = "^0.3.7"
+langchain-ollama = "^0.2.0"
+websockets = "^13.1"
+python-socketio = "^5.11.4"
+qrcode = "^8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.0"
@@ -37,5 +45,3 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-
-

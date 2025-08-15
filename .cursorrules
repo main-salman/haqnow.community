@@ -2,6 +2,11 @@
 
 ## Core Development Rules
 
+## CUSTOM
+- use start-local.sh to start local dev test environment to test features locally
+- update start-local.sh whenever needed as features are added and changes are made to ensure that it continues to work for local developement
+- deploy-to-server.sh should always copy .env file from my workstation to the server, then run git commit, and then download the code from github on the server to deploy the latest code. Code should always only be downloaded from github. Keep deploy-to-server.sh updated so that whenever new changes are made to application architecture, deploy-to-server.sh works properly to deploy the application appropriately.
+
 ### 1. Testing Requirements
 - **MANDATORY**: Every new feature implementation MUST include automated tests
 - Tests must be written simultaneously with the feature, not after

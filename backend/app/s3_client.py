@@ -1,5 +1,6 @@
 import boto3
 from botocore.exceptions import ClientError
+
 from .config import get_settings
 
 
@@ -7,7 +8,7 @@ def get_s3_client():
     settings = get_settings()
     if not settings.s3_access_key or not settings.s3_secret_key:
         raise ValueError("S3 credentials not configured")
-    
+
     return boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint,
@@ -21,9 +22,9 @@ def generate_presigned_upload(filename: str, content_type: str, size: int) -> di
     """Generate presigned URL for multipart upload to SOS"""
     settings = get_settings()
     s3_client = get_s3_client()
-    
+
     key = f"uploads/{filename}"
-    
+
     try:
         response = s3_client.generate_presigned_post(
             Bucket=settings.s3_bucket_originals,
@@ -42,3 +43,11 @@ def generate_presigned_upload(filename: str, content_type: str, size: int) -> di
         }
     except ClientError as e:
         raise ValueError(f"Failed to generate presigned URL: {e}")
+
+
+def upload_to_s3(
+    bucket: str, key: str, data: bytes, content_type: str = "application/octet-stream"
+):
+    """Upload file to S3/SOS"""
+    s3_client = get_s3_client()
+    s3_client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)

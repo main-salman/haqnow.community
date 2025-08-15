@@ -1,11 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from .db import get_db
-from .models import Document, ProcessingJob
-from .schemas import DocumentCreate, DocumentOut, PresignedUploadRequest, PresignedUploadResponse
-from .s3_client import generate_presigned_upload
-from .tasks import process_document_tiling, process_document_thumbnails, process_document_ocr
+import os
+from pathlib import Path
 
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
+
+from .db import get_db
+from .export import get_export_service
+from .models import Document, ProcessingJob
+from .redaction import get_redaction_service
+from .s3_client import generate_presigned_upload
+from .schemas import (
+    DocumentCreate,
+    DocumentOut,
+    PresignedUploadRequest,
+    PresignedUploadResponse,
+)
+from .tasks import (
+    process_document_ocr,
+    process_document_thumbnails,
+    process_document_tiling,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -22,6 +36,46 @@ def create_presigned_upload(payload: PresignedUploadRequest):
         return PresignedUploadResponse(**upload_info)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/upload", response_model=DocumentOut)
+async def upload_document(
+    file: UploadFile = File(...),
+    description: str = "",
+    source: str = "",
+    language: str = "en",
+    db: Session = Depends(get_db),
+):
+    """Direct file upload endpoint for testing"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Create uploads directory if it doesn't exist
+    uploads_dir = Path("uploads")
+    uploads_dir.mkdir(exist_ok=True)
+
+    # Save file locally for processing
+    file_path = uploads_dir / file.filename
+    with open(file_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+
+    # Create document record
+    document = Document(
+        title=file.filename,
+        description=description or f"Uploaded document: {file.filename}",
+        source=source or "Direct Upload",
+        language=language,
+        uploader_id=1,  # TODO: Get from authenticated user
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    # Enqueue processing jobs
+    _enqueue_processing_jobs(document.id, db)
+
+    return document
 
 
 @router.post("/", response_model=DocumentOut)
@@ -42,17 +96,17 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
     db.add(document)
     db.commit()
     db.refresh(document)
-    
+
     # Enqueue processing jobs
     _enqueue_processing_jobs(document.id, db)
-    
+
     return document
 
 
 def _enqueue_processing_jobs(document_id: int, db: Session):
     """Enqueue background processing jobs for a document"""
     job_types = ["tiling", "thumbnails", "ocr"]
-    
+
     for job_type in job_types:
         # Create job record
         job = ProcessingJob(
@@ -63,7 +117,7 @@ def _enqueue_processing_jobs(document_id: int, db: Session):
         db.add(job)
         db.commit()
         db.refresh(job)
-        
+
         # Enqueue Celery task
         if job_type == "tiling":
             task = process_document_tiling.delay(document_id, job.id)
@@ -71,7 +125,7 @@ def _enqueue_processing_jobs(document_id: int, db: Session):
             task = process_document_thumbnails.delay(document_id, job.id)
         elif job_type == "ocr":
             task = process_document_ocr.delay(document_id, job.id)
-        
+
         # Update job with Celery task ID
         job.celery_task_id = task.id
         db.commit()
@@ -93,10 +147,42 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
     return document
 
 
+@router.delete("/{document_id}")
+def delete_document(document_id: int, db: Session = Depends(get_db)):
+    """Delete document by ID"""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Delete associated processing jobs first
+    db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).delete()
+
+    # Delete the document
+    db.delete(document)
+    db.commit()
+
+    return {"message": "Document deleted successfully"}
+
+
+@router.delete("/")
+def delete_all_documents(db: Session = Depends(get_db)):
+    """Delete all documents (for testing purposes)"""
+    # Delete all processing jobs first
+    db.query(ProcessingJob).delete()
+
+    # Delete all documents
+    db.query(Document).delete()
+    db.commit()
+
+    return {"message": "All documents deleted successfully"}
+
+
 @router.get("/{document_id}/jobs")
 def get_document_jobs(document_id: int, db: Session = Depends(get_db)):
     """Get processing jobs for a document"""
-    jobs = db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).all()
+    jobs = (
+        db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).all()
+    )
     return [
         {
             "id": job.id,
@@ -110,3 +196,179 @@ def get_document_jobs(document_id: int, db: Session = Depends(get_db)):
         }
         for job in jobs
     ]
+
+
+@router.post("/{document_id}/pages/{page_number}/redact")
+async def apply_redactions(
+    document_id: int,
+    page_number: int,
+    redaction_data: dict,
+    db: Session = Depends(get_db),
+):
+    """Apply redactions to a specific page"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    redaction_regions = redaction_data.get("redactions", [])
+    if not redaction_regions:
+        raise HTTPException(status_code=400, detail="No redaction regions provided")
+
+    redaction_service = get_redaction_service()
+    result = await redaction_service.apply_redactions(
+        document_id, page_number, redaction_regions
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Redaction failed")
+        )
+
+    return result
+
+
+@router.delete("/{document_id}/pages/{page_number}/redact")
+async def remove_redactions(
+    document_id: int, page_number: int, db: Session = Depends(get_db)
+):
+    """Remove redactions from a specific page"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    redaction_service = get_redaction_service()
+    result = await redaction_service.remove_redactions(document_id, page_number)
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Failed to remove redactions")
+        )
+
+    return result
+
+
+@router.get("/{document_id}/redactions")
+async def list_redacted_pages(document_id: int, db: Session = Depends(get_db)):
+    """List all redacted pages for a document"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    redaction_service = get_redaction_service()
+    redacted_pages = await redaction_service.list_redacted_pages(document_id)
+
+    return {
+        "document_id": document_id,
+        "redacted_pages": redacted_pages,
+        "total_redacted_pages": len(redacted_pages),
+    }
+
+
+@router.get("/{document_id}/pages/{page_number}/redactions/verify")
+async def verify_redaction_integrity(
+    document_id: int, page_number: int, db: Session = Depends(get_db)
+):
+    """Verify redaction integrity for a specific page"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    redaction_service = get_redaction_service()
+    result = await redaction_service.verify_redaction_integrity(
+        document_id, page_number
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=404, detail=result.get("error", "No redactions found")
+        )
+
+    return result
+
+
+@router.post("/{document_id}/export")
+async def export_document(
+    document_id: int, export_request: dict, db: Session = Depends(get_db)
+):
+    """Export document as PDF or images with optional page ranges"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    export_format = export_request.get("format", "pdf")
+    page_ranges_str = export_request.get("page_ranges")
+    include_redacted = export_request.get("include_redacted", True)
+    quality = export_request.get("quality", "high")
+
+    export_service = get_export_service()
+
+    # Parse page ranges if provided
+    page_ranges = None
+    if page_ranges_str:
+        try:
+            # For now, assume total pages is 100 (would get from document metadata)
+            page_ranges = export_service.parse_page_ranges(page_ranges_str, 100)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid page ranges: {str(e)}"
+            )
+
+    result = await export_service.export_pdf(
+        document_id=document_id,
+        page_ranges=page_ranges,
+        include_redacted=include_redacted,
+        export_format=export_format,
+        quality=quality,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Export failed")
+        )
+
+    return result
+
+
+@router.get("/{document_id}/exports")
+async def list_document_exports(document_id: int, db: Session = Depends(get_db)):
+    """List all available exports for a document"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    export_service = get_export_service()
+    result = await export_service.list_exports(document_id)
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Failed to list exports")
+        )
+
+    return result
+
+
+@router.delete("/{document_id}/exports/{filename}")
+async def delete_document_export(
+    document_id: int, filename: str, db: Session = Depends(get_db)
+):
+    """Delete a specific export file"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    export_service = get_export_service()
+    result = await export_service.delete_export(document_id, filename)
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Failed to delete export")
+        )
+
+    return result

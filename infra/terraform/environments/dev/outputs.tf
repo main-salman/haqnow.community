@@ -1,35 +1,41 @@
-output "instance_public_ip" {
-  description = "Public IP address of the main instance"
-  value       = module.compute.public_ip
+output "instance_ip_address" {
+  description = "The public IP address of the main compute instance"
+  value       = exoscale_compute_instance.main.public_ip_address
 }
 
-output "instance_private_ip" {
-  description = "Private IP address of the main instance"
-  value       = module.compute.private_ip
+output "elastic_ip_address" {
+  description = "The elastic IP address"
+  value       = exoscale_elastic_ip.main.ip_address
 }
 
-output "database_uri" {
-  description = "Database connection URI"
-  value       = module.database.uri
-  sensitive   = true
-}
-
-output "database_host" {
-  description = "Database host"
-  value       = module.database.host
-}
-
-output "database_port" {
-  description = "Database port"
-  value       = module.database.port
+output "db_info" {
+  description = "PostgreSQL database information"
+  value       = "Database will be available after deployment. Check Exoscale console for connection details."
 }
 
 output "s3_endpoint" {
-  description = "S3-compatible endpoint URL"
-  value       = module.storage.endpoint_url
+  description = "Exoscale S3 endpoint URL"
+  value       = "https://sos-${var.exoscale_zone}.exoscale.com"
 }
 
-output "bucket_names" {
-  description = "Created bucket names"
-  value       = module.storage.bucket_names
+output "bucket_names_to_create" {
+  description = "S3 bucket names that need to be created manually"
+  value = [
+    "${var.name_prefix}-originals",
+    "${var.name_prefix}-normalized",
+    "${var.name_prefix}-derivatives",
+    "${var.name_prefix}-exports",
+    "${var.name_prefix}-trash"
+  ]
+}
+
+output "deployment_instructions" {
+  description = "Next steps for deployment"
+  value = <<-EOT
+    1. SSH to server: ssh ubuntu@${exoscale_compute_instance.main.public_ip_address}
+    2. Clone repository and deploy with Docker Compose
+    3. Create S3 buckets manually in Exoscale console
+    4. Configure DNS to point to: ${exoscale_elastic_ip.main.ip_address}
+    5. Set up SSL certificates with Let's Encrypt
+  EOT
 }

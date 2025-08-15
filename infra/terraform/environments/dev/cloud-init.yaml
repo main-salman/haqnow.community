@@ -1,0 +1,110 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose-plugin
+  - git
+  - curl
+  - wget
+  - unzip
+  - htop
+  - nginx
+
+runcmd:
+  # Enable and start Docker
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker ubuntu
+
+  # Install Docker Compose
+  - curl -L "https://github.com/docker/compose/releases/download/v${docker_compose_version}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  - chmod +x /usr/local/bin/docker-compose
+
+  # Create application directory
+  - mkdir -p /opt/haqnow-community
+  - chown ubuntu:ubuntu /opt/haqnow-community
+
+  # Configure nginx (basic setup)
+  - systemctl enable nginx
+  - systemctl start nginx
+
+  # Create swap file (recommended for small instances)
+  - fallocate -l 2G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+write_files:
+  - path: /etc/nginx/sites-available/haqnow-community
+    content: |
+      server {
+          listen 80;
+          server_name _;
+
+          location / {
+              proxy_pass http://localhost:3000;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+          }
+
+          location /api/ {
+              proxy_pass http://localhost:8000/;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+          }
+      }
+  - path: /home/ubuntu/deploy.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+
+      echo "🚀 Deploying Haqnow Community Platform..."
+
+      # Clone or update repository
+      if [ -d "/opt/haqnow-community/.git" ]; then
+          cd /opt/haqnow-community
+          git pull origin main
+      else
+          git clone https://github.com/your-username/haqnow-community.git /opt/haqnow-community
+          cd /opt/haqnow-community
+      fi
+
+      # Copy environment file
+      if [ ! -f ".env" ]; then
+          cp .env.example .env
+          echo "⚠️  Please edit .env file with your configuration"
+      fi
+
+      # Deploy with Docker Compose
+      cd deploy
+      docker compose down || true
+      docker compose up -d --build
+
+      # Enable nginx site
+      sudo ln -sf /etc/nginx/sites-available/haqnow-community /etc/nginx/sites-enabled/
+      sudo nginx -t && sudo systemctl reload nginx
+
+      echo "✅ Deployment complete!"
+      echo "🌐 Frontend: http://$(curl -s ifconfig.me):3000"
+      echo "🔌 API: http://$(curl -s ifconfig.me):8000"
+      echo "📊 Health: http://$(curl -s ifconfig.me):8000/health"
+
+final_message: |
+  Haqnow Community server is ready!
+
+  Next steps:
+  1. SSH to the server: ssh ubuntu@$(curl -s ifconfig.me)
+  2. Run deployment script: ./deploy.sh
+  3. Configure your .env file
+  4. Set up DNS and SSL certificates
+
+  The server is configured with Docker, Docker Compose, and Nginx.
+  All services will be available once you run the deployment script.
