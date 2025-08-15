@@ -100,11 +100,3 @@ export const adminApi = {
     axios.post<CreateApiKeyResponse>('/api/auth/admin/api-keys', data),
   revokeApiKey: (id: number) => axios.delete(`/api/auth/admin/api-keys/${id}`),
 }
-
-// Search API (placeholder for future implementation)
-export const searchApi = {
-  search: (query: string, filters?: Record<string, any>) =>
-    axios.get('/api/search/', { params: { q: query, ...filters } }),
-  askQuestion: (documentId: number, question: string) =>
-    axios.post('/api/search/ask', { document_id: documentId, question }),
-}
