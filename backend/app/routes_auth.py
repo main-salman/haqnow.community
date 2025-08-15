@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+import jwt
 
 from .db import Base, engine, get_db
 from .models import ApiKey, User
@@ -271,3 +273,38 @@ def admin_revoke_api_key(key_id: int, db: Session = Depends(get_db)):
     api_key.is_active = False
     db.commit()
     return {"message": "API key revoked"}
+
+
+# Authentication dependency
+security = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """Get current user from JWT token"""
+    from .config import get_settings
+    
+    try:
+        settings = get_settings()
+        payload = jwt.decode(
+            credentials.credentials, 
+            settings.jwt_secret, 
+            algorithms=["HS256"],
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer
+        )
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+            
+        return user
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")

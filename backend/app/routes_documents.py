@@ -8,7 +8,7 @@ from .db import get_db
 from .export import get_export_service
 from .models import Document, ProcessingJob
 from .redaction import get_redaction_service
-from .auth import get_current_user
+from .routes_auth import get_current_user
 from .s3_client import generate_presigned_upload
 from .schemas import (
     DocumentCreate,
