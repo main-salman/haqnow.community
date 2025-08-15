@@ -45,21 +45,25 @@ def process_document_tiling(self, document_id: int, job_id: int):
         job.celery_task_id = self.request.id
         db.commit()
 
-        # Download original file from S3
-        original_key = (
-            f"uploads/{document.title}"  # Simplified - would use actual upload key
-        )
+        # Download original file from S3 or use local file
+        original_key = f"uploads/{document.title}"
         try:
             file_data = download_from_s3(settings.s3_bucket_originals, original_key)
         except Exception:
-            # For testing without S3, create a dummy PDF
-            import fitz
-
-            doc = fitz.open()
-            page = doc.new_page()
-            page.insert_text((100, 100), f"Test document: {document.title}")
-            file_data = doc.tobytes()
-            doc.close()
+            # For testing without S3, try to find the local file
+            import os
+            local_file_path = f"/srv/{document.title}"
+            if os.path.exists(local_file_path):
+                with open(local_file_path, "rb") as f:
+                    file_data = f.read()
+            else:
+                # Last resort: create a dummy PDF
+                import fitz
+                doc = fitz.open()
+                page = doc.new_page()
+                page.insert_text((100, 100), f"Test document: {document.title}")
+                file_data = doc.tobytes()
+                doc.close()
 
         job.progress = 20
         db.commit()
@@ -80,13 +84,20 @@ def process_document_tiling(self, document_id: int, job_id: int):
         for i, (page_num, page_image) in enumerate(pages):
             tiles = generate_tiles(page_image, tile_size=256, quality=80)
 
-            # Upload tiles to S3
+            # Upload tiles to S3 or store locally
             for x, y, tile_data in tiles:
                 tile_key = f"tiles/{document_id}/page_{page_num}/tile_{x}_{y}.webp"
                 try:
                     upload_to_s3("tiles", tile_key, tile_data, "image/webp")
                 except Exception as e:
-                    print(f"Failed to upload tile: {e}")
+                    # Store locally if S3 is not available
+                    import os
+                    local_dir = f"/srv/processed/tiles/{document_id}/page_{page_num}"
+                    os.makedirs(local_dir, exist_ok=True)
+                    local_path = f"{local_dir}/tile_{x}_{y}.webp"
+                    with open(local_path, "wb") as f:
+                        f.write(tile_data)
+                    print(f"Stored tile locally: {local_path}")
 
             # Update progress
             progress = 50 + (40 * (i + 1) // total_pages)
@@ -135,19 +146,25 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         job.celery_task_id = self.request.id
         db.commit()
 
-        # Download original file from S3
+        # Download original file from S3 or use local file
         original_key = f"uploads/{document.title}"
         try:
             file_data = download_from_s3(settings.s3_bucket_originals, original_key)
         except Exception:
-            # For testing without S3, create a dummy PDF
-            import fitz
-
-            doc = fitz.open()
-            page = doc.new_page()
-            page.insert_text((100, 100), f"Test document: {document.title}")
-            file_data = doc.tobytes()
-            doc.close()
+            # For testing without S3, try to find the local file
+            import os
+            local_file_path = f"/srv/{document.title}"
+            if os.path.exists(local_file_path):
+                with open(local_file_path, "rb") as f:
+                    file_data = f.read()
+            else:
+                # Last resort: create a dummy PDF
+                import fitz
+                doc = fitz.open()
+                page = doc.new_page()
+                page.insert_text((100, 100), f"Test document: {document.title}")
+                file_data = doc.tobytes()
+                doc.close()
 
         job.progress = 25
         db.commit()
@@ -168,12 +185,19 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         for i, (page_num, page_image) in enumerate(pages):
             thumbnail = generate_thumbnail(page_image, max_size=(200, 300))
 
-            # Upload thumbnail to S3
+            # Upload thumbnail to S3 or store locally
             thumb_key = f"thumbnails/{document_id}/page_{page_num}.webp"
             try:
                 upload_to_s3("thumbnails", thumb_key, thumbnail, "image/webp")
             except Exception as e:
-                print(f"Failed to upload thumbnail: {e}")
+                # Store locally if S3 is not available
+                import os
+                local_dir = f"/srv/processed/thumbnails/{document_id}"
+                os.makedirs(local_dir, exist_ok=True)
+                local_path = f"{local_dir}/page_{page_num}.webp"
+                with open(local_path, "wb") as f:
+                    f.write(thumbnail)
+                print(f"Stored thumbnail locally: {local_path}")
 
             # Update progress
             progress = 50 + (50 * (i + 1) // total_pages)
@@ -222,19 +246,25 @@ def process_document_ocr(self, document_id: int, job_id: int):
         job.celery_task_id = self.request.id
         db.commit()
 
-        # Download original file from S3
+        # Download original file from S3 or use local file
         original_key = f"uploads/{document.title}"
         try:
             file_data = download_from_s3(settings.s3_bucket_originals, original_key)
         except Exception:
-            # For testing without S3, create a dummy PDF
-            import fitz
-
-            doc = fitz.open()
-            page = doc.new_page()
-            page.insert_text((100, 100), f"Test document: {document.title}")
-            file_data = doc.tobytes()
-            doc.close()
+            # For testing without S3, try to find the local file
+            import os
+            local_file_path = f"/srv/{document.title}"
+            if os.path.exists(local_file_path):
+                with open(local_file_path, "rb") as f:
+                    file_data = f.read()
+            else:
+                # Last resort: create a dummy PDF
+                import fitz
+                doc = fitz.open()
+                page = doc.new_page()
+                page.insert_text((100, 100), f"Test document: {document.title}")
+                file_data = doc.tobytes()
+                doc.close()
 
         job.progress = 20
         db.commit()

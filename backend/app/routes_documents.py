@@ -385,11 +385,17 @@ async def get_document_thumbnail(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # For now, return a placeholder response
-    # In production, this would serve actual thumbnail files
     from fastapi.responses import Response
+    import os
     
-    # Create a simple placeholder image
+    # Try to serve actual processed thumbnail
+    local_path = f"/srv/processed/thumbnails/{document_id}/page_{page_number}.webp"
+    if os.path.exists(local_path):
+        with open(local_path, "rb") as f:
+            thumbnail_data = f.read()
+        return Response(content=thumbnail_data, media_type="image/webp")
+    
+    # Fallback: Create a placeholder image
     from PIL import Image, ImageDraw
     import io
     
