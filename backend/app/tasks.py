@@ -24,6 +24,49 @@ def get_db_session() -> Session:
     return SessionLocal()
 
 
+def _load_original_file_bytes(settings, document: Document) -> bytes:
+    """Best-effort loader for original uploaded file bytes.
+
+    Load order:
+    1) S3 bucket `settings.s3_bucket_originals` at key `uploads/{document.title}`
+    2) Local uploads within project layout used by API/worker: `/srv/backend/uploads/{filename}`
+    3) Alternate local paths that may be used in dev: `/srv/uploads/{filename}`, `uploads/{filename}`
+    4) As a last resort, synthesize a simple one-page PDF indicating a placeholder
+    """
+    original_key = f"uploads/{document.title}"
+
+    # 1) Try S3
+    try:
+        return download_from_s3(settings.s3_bucket_originals, original_key)
+    except Exception:
+        pass
+
+    # 2) and 3) Try local filesystem variants
+    import os
+
+    candidate_paths = [
+        f"/srv/backend/uploads/{document.title}",  # container path when running `cd backend`
+        f"/srv/uploads/{document.title}",  # alternate mount path
+        f"uploads/{document.title}",  # relative path in dev
+    ]
+    for path in candidate_paths:
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return f.read()
+
+    # 4) Last resort: create a minimal placeholder PDF
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text(
+        (100, 100), f"Uploaded file not found; placeholder for: {document.title}"
+    )
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
 @celery_app.task(bind=True)
 def process_document_tiling(self, document_id: int, job_id: int):
     """Generate tiles for a document"""
@@ -45,25 +88,8 @@ def process_document_tiling(self, document_id: int, job_id: int):
         job.celery_task_id = self.request.id
         db.commit()
 
-        # Download original file from S3 or use local file
-        original_key = f"uploads/{document.title}"
-        try:
-            file_data = download_from_s3(settings.s3_bucket_originals, original_key)
-        except Exception:
-            # For testing without S3, try to find the local file
-            import os
-            local_file_path = f"/srv/{document.title}"
-            if os.path.exists(local_file_path):
-                with open(local_file_path, "rb") as f:
-                    file_data = f.read()
-            else:
-                # Last resort: create a dummy PDF
-                import fitz
-                doc = fitz.open()
-                page = doc.new_page()
-                page.insert_text((100, 100), f"Test document: {document.title}")
-                file_data = doc.tobytes()
-                doc.close()
+        # Load original file bytes from S3 or local uploads directory
+        file_data = _load_original_file_bytes(settings, document)
 
         job.progress = 20
         db.commit()
@@ -92,6 +118,7 @@ def process_document_tiling(self, document_id: int, job_id: int):
                 except Exception as e:
                     # Store locally if S3 is not available
                     import os
+
                     local_dir = f"/srv/processed/tiles/{document_id}/page_{page_num}"
                     os.makedirs(local_dir, exist_ok=True)
                     local_path = f"{local_dir}/tile_{x}_{y}.webp"
@@ -146,25 +173,8 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         job.celery_task_id = self.request.id
         db.commit()
 
-        # Download original file from S3 or use local file
-        original_key = f"uploads/{document.title}"
-        try:
-            file_data = download_from_s3(settings.s3_bucket_originals, original_key)
-        except Exception:
-            # For testing without S3, try to find the local file
-            import os
-            local_file_path = f"/srv/{document.title}"
-            if os.path.exists(local_file_path):
-                with open(local_file_path, "rb") as f:
-                    file_data = f.read()
-            else:
-                # Last resort: create a dummy PDF
-                import fitz
-                doc = fitz.open()
-                page = doc.new_page()
-                page.insert_text((100, 100), f"Test document: {document.title}")
-                file_data = doc.tobytes()
-                doc.close()
+        # Load original file bytes from S3 or local uploads directory
+        file_data = _load_original_file_bytes(settings, document)
 
         job.progress = 25
         db.commit()
@@ -192,6 +202,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
             except Exception as e:
                 # Store locally if S3 is not available
                 import os
+
                 local_dir = f"/srv/processed/thumbnails/{document_id}"
                 os.makedirs(local_dir, exist_ok=True)
                 local_path = f"{local_dir}/page_{page_num}.webp"
@@ -246,25 +257,8 @@ def process_document_ocr(self, document_id: int, job_id: int):
         job.celery_task_id = self.request.id
         db.commit()
 
-        # Download original file from S3 or use local file
-        original_key = f"uploads/{document.title}"
-        try:
-            file_data = download_from_s3(settings.s3_bucket_originals, original_key)
-        except Exception:
-            # For testing without S3, try to find the local file
-            import os
-            local_file_path = f"/srv/{document.title}"
-            if os.path.exists(local_file_path):
-                with open(local_file_path, "rb") as f:
-                    file_data = f.read()
-            else:
-                # Last resort: create a dummy PDF
-                import fitz
-                doc = fitz.open()
-                page = doc.new_page()
-                page.insert_text((100, 100), f"Test document: {document.title}")
-                file_data = doc.tobytes()
-                doc.close()
+        # Load original file bytes from S3 or local uploads directory
+        file_data = _load_original_file_bytes(settings, document)
 
         job.progress = 20
         db.commit()

@@ -160,6 +160,7 @@ export default function DocumentUpload({ isOpen, onClose }: DocumentUploadProps)
         {/* Upload Area */}
         <div className="p-6">
           <div
+            data-testid="bulk-upload"
             className={clsx(
               'border-2 border-dashed rounded-xl p-8 text-center transition-colors',
               isDragOver

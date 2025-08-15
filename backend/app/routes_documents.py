@@ -55,7 +55,10 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="No file provided")
 
     # Create uploads directory if it doesn't exist
-    uploads_dir = Path("uploads")
+    # Always save into backend/uploads so worker and API share a consistent path in dev/prod
+    uploads_dir = (
+        Path("backend/uploads") if Path("backend").exists() else Path("uploads")
+    )
     uploads_dir.mkdir(exist_ok=True)
 
     # Save file locally for processing
@@ -366,7 +369,7 @@ async def get_document_tiles(
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # For now, return a simple tile configuration
     # In production, this would serve actual tile files
     return {
@@ -375,7 +378,7 @@ async def get_document_tiles(
         "width": 2000,
         "height": 3000,
         "tileSize": 256,
-        "overlap": 1
+        "overlap": 1,
     }
 
 
@@ -388,67 +391,69 @@ async def get_document_thumbnail(
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
-    from fastapi.responses import Response
+
     import os
-    
+
+    from fastapi.responses import Response
+
     # Try to serve actual processed thumbnail
     local_path = f"/srv/processed/thumbnails/{document_id}/page_{page_number}.webp"
     if os.path.exists(local_path):
         with open(local_path, "rb") as f:
             thumbnail_data = f.read()
         return Response(content=thumbnail_data, media_type="image/webp")
-    
+
     # Fallback: Create a placeholder image
-    from PIL import Image, ImageDraw
     import io
-    
-    img = Image.new('RGB', (800, 1000), color='white')
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (800, 1000), color="white")
     draw = ImageDraw.Draw(img)
-    draw.text((50, 50), f"Document: {document.title}\nPage: {page_number + 1}", fill='black')
-    
+    draw.text(
+        (50, 50), f"Document: {document.title}\nPage: {page_number + 1}", fill="black"
+    )
+
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='PNG')
+    img.save(img_bytes, format="PNG")
     img_bytes.seek(0)
-    
+
     return Response(content=img_bytes.getvalue(), media_type="image/png")
 
 
 @router.get("/{document_id}/download")
-async def download_document(
-    document_id: int, db: Session = Depends(get_db)
-):
+async def download_document(document_id: int, db: Session = Depends(get_db)):
     """Download original document file"""
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # For now, return document info
     # In production, this would serve the actual file
     return {
         "success": True,
         "document_id": document_id,
         "filename": document.title,
-        "download_url": f"/api/documents/{document_id}/file"
+        "download_url": f"/api/documents/{document_id}/file",
     }
 
 
 @router.post("/{document_id}/comments")
 async def add_comment(
-    document_id: int, 
+    document_id: int,
     comment_data: dict,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     """Add a comment to a document"""
     from .models import Comment
-    
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Create comment
     comment = Comment(
         document_id=document_id,
@@ -456,13 +461,13 @@ async def add_comment(
         page_number=comment_data.get("page_number", 0),
         x_position=comment_data.get("x_position", 0.0),
         y_position=comment_data.get("y_position", 0.0),
-        content=comment_data.get("content", "")
+        content=comment_data.get("content", ""),
     )
-    
+
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    
+
     return {
         "id": comment.id,
         "content": comment.content,
@@ -470,27 +475,29 @@ async def add_comment(
         "x_position": comment.x_position,
         "y_position": comment.y_position,
         "user_name": current_user.full_name or current_user.email,
-        "created_at": comment.created_at.isoformat()
+        "created_at": comment.created_at.isoformat(),
     }
 
 
 @router.get("/{document_id}/comments")
-async def get_comments(
-    document_id: int, db: Session = Depends(get_db)
-):
+async def get_comments(document_id: int, db: Session = Depends(get_db)):
     """Get all comments for a document"""
     from .models import Comment, User
-    
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Get comments with user info
-    comments = db.query(Comment, User).join(User, Comment.user_id == User.id)\
-                .filter(Comment.document_id == document_id)\
-                .order_by(Comment.created_at.desc()).all()
-    
+    comments = (
+        db.query(Comment, User)
+        .join(User, Comment.user_id == User.id)
+        .filter(Comment.document_id == document_id)
+        .order_by(Comment.created_at.desc())
+        .all()
+    )
+
     return {
         "comments": [
             {
@@ -501,7 +508,7 @@ async def get_comments(
                 "y_position": comment.y_position,
                 "user_name": user.full_name or user.email,
                 "created_at": comment.created_at.isoformat(),
-                "is_resolved": comment.is_resolved
+                "is_resolved": comment.is_resolved,
             }
             for comment, user in comments
         ]
@@ -513,16 +520,16 @@ async def add_redaction(
     document_id: int,
     redaction_data: dict,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     """Add a redaction to a document"""
     from .models import Redaction
-    
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Create redaction
     redaction = Redaction(
         document_id=document_id,
@@ -532,13 +539,13 @@ async def add_redaction(
         y_start=redaction_data.get("y_start", 0.0),
         x_end=redaction_data.get("x_end", 0.0),
         y_end=redaction_data.get("y_end", 0.0),
-        reason=redaction_data.get("reason", "")
+        reason=redaction_data.get("reason", ""),
     )
-    
+
     db.add(redaction)
     db.commit()
     db.refresh(redaction)
-    
+
     return {
         "id": redaction.id,
         "page_number": redaction.page_number,
@@ -547,25 +554,23 @@ async def add_redaction(
         "x_end": redaction.x_end,
         "y_end": redaction.y_end,
         "reason": redaction.reason,
-        "created_at": redaction.created_at.isoformat()
+        "created_at": redaction.created_at.isoformat(),
     }
 
 
 @router.get("/{document_id}/redactions")
-async def get_redactions(
-    document_id: int, db: Session = Depends(get_db)
-):
+async def get_redactions(document_id: int, db: Session = Depends(get_db)):
     """Get all redactions for a document"""
     from .models import Redaction
-    
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Get redactions
     redactions = db.query(Redaction).filter(Redaction.document_id == document_id).all()
-    
+
     return {
         "redactions": [
             {
@@ -576,7 +581,7 @@ async def get_redactions(
                 "x_end": redaction.x_end,
                 "y_end": redaction.y_end,
                 "reason": redaction.reason,
-                "created_at": redaction.created_at.isoformat()
+                "created_at": redaction.created_at.isoformat(),
             }
             for redaction in redactions
         ]
@@ -606,47 +611,65 @@ async def delete_document_export(
 
 # Document Sharing Endpoints
 
+
 @router.post("/{document_id}/shares", response_model=DocumentShareOut)
 async def share_document(
     document_id: int,
     share_data: DocumentShareCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     """Share a document with specific users or everyone"""
     # Verify document exists and user has permission
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Check if user owns the document or has edit permission
-    if document.uploader_id != current_user.id and current_user.role not in ["admin", "manager"]:
+    if document.uploader_id != current_user.id and current_user.role not in [
+        "admin",
+        "manager",
+    ]:
         # Check if user has edit permission through existing shares
-        existing_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.shared_with_email == current_user.email,
-            DocumentShare.permission_level == "edit"
-        ).first()
+        existing_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.shared_with_email == current_user.email,
+                DocumentShare.permission_level == "edit",
+            )
+            .first()
+        )
         if not existing_share:
             raise HTTPException(status_code=403, detail="Permission denied")
-    
+
     # Validate permission level
     if share_data.permission_level not in ["view", "edit"]:
-        raise HTTPException(status_code=400, detail="Permission level must be 'view' or 'edit'")
-    
+        raise HTTPException(
+            status_code=400, detail="Permission level must be 'view' or 'edit'"
+        )
+
     # Check for existing share
     existing_share = None
     if share_data.is_everyone:
-        existing_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.is_everyone == True
-        ).first()
+        existing_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.is_everyone == True,
+            )
+            .first()
+        )
     elif share_data.shared_with_email:
-        existing_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.shared_with_email == share_data.shared_with_email
-        ).first()
-    
+        existing_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.shared_with_email == share_data.shared_with_email,
+            )
+            .first()
+        )
+
     if existing_share:
         # Update existing share
         existing_share.permission_level = share_data.permission_level
@@ -654,21 +677,23 @@ async def share_document(
         db.commit()
         db.refresh(existing_share)
         return existing_share
-    
+
     # Create new share
     document_share = DocumentShare(
         document_id=document_id,
         shared_by_user_id=current_user.id,
-        shared_with_email=share_data.shared_with_email if not share_data.is_everyone else None,
+        shared_with_email=share_data.shared_with_email
+        if not share_data.is_everyone
+        else None,
         permission_level=share_data.permission_level,
         is_everyone=share_data.is_everyone,
-        expires_at=share_data.expires_at
+        expires_at=share_data.expires_at,
     )
-    
+
     db.add(document_share)
     db.commit()
     db.refresh(document_share)
-    
+
     return document_share
 
 
@@ -676,29 +701,42 @@ async def share_document(
 async def get_document_shares(
     document_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     """Get all shares for a document"""
     # Verify document exists and user has permission
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Check if user owns the document or has permission
-    if document.uploader_id != current_user.id and current_user.role not in ["admin", "manager"]:
+    if document.uploader_id != current_user.id and current_user.role not in [
+        "admin",
+        "manager",
+    ]:
         # Check if user has any permission through existing shares
-        user_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.shared_with_email == current_user.email
-        ).first()
-        everyone_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.is_everyone == True
-        ).first()
+        user_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.shared_with_email == current_user.email,
+            )
+            .first()
+        )
+        everyone_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.is_everyone == True,
+            )
+            .first()
+        )
         if not user_share and not everyone_share:
             raise HTTPException(status_code=403, detail="Permission denied")
-    
-    shares = db.query(DocumentShare).filter(DocumentShare.document_id == document_id).all()
+
+    shares = (
+        db.query(DocumentShare).filter(DocumentShare.document_id == document_id).all()
+    )
     return shares
 
 
@@ -706,17 +744,17 @@ async def get_document_shares(
 async def check_document_access(
     document_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     """Check user's access level to a document"""
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Check access level
     access_level = "none"
-    
+
     # Document owner has full access
     if document.uploader_id == current_user.id:
         access_level = "owner"
@@ -725,33 +763,41 @@ async def check_document_access(
         access_level = "admin"
     else:
         # Check specific user shares
-        user_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.shared_with_email == current_user.email
-        ).first()
-        
+        user_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.shared_with_email == current_user.email,
+            )
+            .first()
+        )
+
         # Check everyone shares
-        everyone_share = db.query(DocumentShare).filter(
-            DocumentShare.document_id == document_id,
-            DocumentShare.is_everyone == True
-        ).first()
-        
+        everyone_share = (
+            db.query(DocumentShare)
+            .filter(
+                DocumentShare.document_id == document_id,
+                DocumentShare.is_everyone == True,
+            )
+            .first()
+        )
+
         # Determine highest permission level
         permissions = []
         if user_share:
             permissions.append(user_share.permission_level)
         if everyone_share:
             permissions.append(everyone_share.permission_level)
-        
+
         if "edit" in permissions:
             access_level = "edit"
         elif "view" in permissions:
             access_level = "view"
-    
+
     return {
         "document_id": document_id,
         "access_level": access_level,
         "can_view": access_level in ["view", "edit", "owner", "admin"],
         "can_edit": access_level in ["edit", "owner", "admin"],
-        "can_share": access_level in ["owner", "admin"]
+        "can_share": access_level in ["owner", "admin"],
     }
