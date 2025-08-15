@@ -70,8 +70,8 @@ export const documentsApi = {
     }),
   download: (id: number) => axios.get(`/api/documents/${id}/download`),
   getComments: (id: number) => axios.get(`/api/documents/${id}/comments`),
-  addComment: (id: number, comment: string) => 
-    axios.post(`/api/documents/${id}/comments`, { content: comment }),
+  addComment: (id: number, commentData: any) => 
+    axios.post(`/api/documents/${id}/comments`, commentData),
   export: (id: number, options: { format: string; pages?: number[] }) =>
     axios.post(`/api/documents/${id}/export`, options),
 }

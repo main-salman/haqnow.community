@@ -29,6 +29,7 @@ export default function DocumentViewerPage() {
 	const [newComment, setNewComment] = useState('')
 	const [aiAnswer, setAiAnswer] = useState('')
 	const [isLoadingAI, setIsLoadingAI] = useState(false)
+	const [redactionMode, setRedactionMode] = useState(false)
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -85,14 +86,21 @@ export default function DocumentViewerPage() {
 		}
 	}
 
-	const handleAddComment = async () => {
+	const handleAddComment = async (x?: number, y?: number, pageNumber?: number) => {
 		if (!newComment.trim()) return
 		
 		try {
-			await documentsApi.addComment(documentId, newComment)
+			const commentData = {
+				content: newComment,
+				page_number: pageNumber || currentPage,
+				x_position: x || 0,
+				y_position: y || 0
+			}
+			await documentsApi.addComment(documentId, commentData)
 			setNewComment('')
 			toast.success('Comment added')
 			// Refresh comments
+			queryClient.invalidateQueries(['document-comments', documentId])
 		} catch (error) {
 			toast.error('Failed to add comment')
 		}
@@ -177,10 +185,16 @@ export default function DocumentViewerPage() {
 							<Download className="h-4 w-4 mr-2" /> Download
 						</button>
 						<button 
-							title="Redact document (coming soon)"
-							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
+							onClick={() => setRedactionMode(!redactionMode)}
+							title={redactionMode ? "Exit redaction mode" : "Enter redaction mode"}
+							className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center ${
+								redactionMode 
+									? 'bg-red-100 text-red-700 hover:bg-red-200' 
+									: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+							}`}
 						>
 							<Edit3 className="h-4 w-4" />
+							{redactionMode && <span className="ml-2">Exit Redact</span>}
 						</button>
 						<button 
 							onClick={() => setShowSidebar(!showSidebar)} 

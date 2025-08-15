@@ -432,20 +432,41 @@ async def download_document(
 
 @router.post("/{document_id}/comments")
 async def add_comment(
-    document_id: int, comment_data: dict, db: Session = Depends(get_db)
+    document_id: int, 
+    comment_data: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """Add a comment to a document"""
+    from .models import Comment
+    
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # For now, return success
-    # In production, this would save to database
+    # Create comment
+    comment = Comment(
+        document_id=document_id,
+        user_id=current_user.id,
+        page_number=comment_data.get("page_number", 0),
+        x_position=comment_data.get("x_position", 0.0),
+        y_position=comment_data.get("y_position", 0.0),
+        content=comment_data.get("content", "")
+    )
+    
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    
     return {
-        "success": True,
-        "comment_id": 1,
-        "message": "Comment added successfully"
+        "id": comment.id,
+        "content": comment.content,
+        "page_number": comment.page_number,
+        "x_position": comment.x_position,
+        "y_position": comment.y_position,
+        "user_name": current_user.full_name or current_user.email,
+        "created_at": comment.created_at.isoformat()
     }
 
 
@@ -454,16 +475,107 @@ async def get_comments(
     document_id: int, db: Session = Depends(get_db)
 ):
     """Get all comments for a document"""
+    from .models import Comment, User
+    
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # Return empty comments for now
+    # Get comments with user info
+    comments = db.query(Comment, User).join(User, Comment.user_id == User.id)\
+                .filter(Comment.document_id == document_id)\
+                .order_by(Comment.created_at.desc()).all()
+    
     return {
-        "success": True,
-        "comments": [],
-        "total": 0
+        "comments": [
+            {
+                "id": comment.id,
+                "content": comment.content,
+                "page_number": comment.page_number,
+                "x_position": comment.x_position,
+                "y_position": comment.y_position,
+                "user_name": user.full_name or user.email,
+                "created_at": comment.created_at.isoformat(),
+                "is_resolved": comment.is_resolved
+            }
+            for comment, user in comments
+        ]
+    }
+
+
+@router.post("/{document_id}/redactions")
+async def add_redaction(
+    document_id: int,
+    redaction_data: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Add a redaction to a document"""
+    from .models import Redaction
+    
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Create redaction
+    redaction = Redaction(
+        document_id=document_id,
+        user_id=current_user.id,
+        page_number=redaction_data.get("page_number", 0),
+        x_start=redaction_data.get("x_start", 0.0),
+        y_start=redaction_data.get("y_start", 0.0),
+        x_end=redaction_data.get("x_end", 0.0),
+        y_end=redaction_data.get("y_end", 0.0),
+        reason=redaction_data.get("reason", "")
+    )
+    
+    db.add(redaction)
+    db.commit()
+    db.refresh(redaction)
+    
+    return {
+        "id": redaction.id,
+        "page_number": redaction.page_number,
+        "x_start": redaction.x_start,
+        "y_start": redaction.y_start,
+        "x_end": redaction.x_end,
+        "y_end": redaction.y_end,
+        "reason": redaction.reason,
+        "created_at": redaction.created_at.isoformat()
+    }
+
+
+@router.get("/{document_id}/redactions")
+async def get_redactions(
+    document_id: int, db: Session = Depends(get_db)
+):
+    """Get all redactions for a document"""
+    from .models import Redaction
+    
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Get redactions
+    redactions = db.query(Redaction).filter(Redaction.document_id == document_id).all()
+    
+    return {
+        "redactions": [
+            {
+                "id": redaction.id,
+                "page_number": redaction.page_number,
+                "x_start": redaction.x_start,
+                "y_start": redaction.y_start,
+                "x_end": redaction.x_end,
+                "y_end": redaction.y_end,
+                "reason": redaction.reason,
+                "created_at": redaction.created_at.isoformat()
+            }
+            for redaction in redactions
+        ]
     }
 
 
