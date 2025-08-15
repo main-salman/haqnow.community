@@ -89,11 +89,7 @@ resource "exoscale_compute_instance" "main" {
   }))
 }
 
-# Create elastic IP
-resource "exoscale_elastic_ip" "main" {
-  zone        = var.exoscale_zone
-  description = "${var.name_prefix}-eip"
-}
+# Elastic IP removed - using direct instance IP
 
 # Create DBaaS PostgreSQL instance (commented out for now)
 # resource "exoscale_dbaas" "postgres" {

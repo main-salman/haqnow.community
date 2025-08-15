@@ -1,0 +1,14 @@
+This is a test PDF document for comprehensive testing of the Haqnow Community Platform.
+
+Key Features to Test:
+- Document Upload
+- OCR Processing
+- Full-text Search
+- AI Q&A with RAG
+- Document Management
+- User Authentication
+
+Test Content:
+The platform should be able to process this document, extract text via OCR, and allow users to search for terms like 'platform', 'testing', 'OCR', and 'authentication'.
+
+This document will help verify that all core functionality is working properly.

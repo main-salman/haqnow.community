@@ -3,10 +3,7 @@ output "instance_ip_address" {
   value       = exoscale_compute_instance.main.public_ip_address
 }
 
-output "elastic_ip_address" {
-  description = "The elastic IP address"
-  value       = exoscale_elastic_ip.main.ip_address
-}
+# Elastic IP removed - using direct instance IP
 
 output "db_info" {
   description = "PostgreSQL database information"
@@ -35,7 +32,7 @@ output "deployment_instructions" {
     1. SSH to server: ssh ubuntu@${exoscale_compute_instance.main.public_ip_address}
     2. Clone repository and deploy with Docker Compose
     3. Create S3 buckets manually in Exoscale console
-    4. Configure DNS to point to: ${exoscale_elastic_ip.main.ip_address}
+    4. Configure DNS to point to: ${exoscale_compute_instance.main.public_ip_address}
     5. Set up SSL certificates with Let's Encrypt
   EOT
 }

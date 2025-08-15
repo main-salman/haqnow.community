@@ -25,12 +25,14 @@ import {
 import { documentsApi, Document } from '../services/api'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
+import DocumentUpload from '../components/DocumentUpload'
 
 export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [sortBy, setSortBy] = useState('created_at')
+  const [showUpload, setShowUpload] = useState(false)
   const [filters, setFilters] = useState({
     source: '',
     language: '',
@@ -129,7 +131,10 @@ export default function DocumentsPage() {
                 <p className="text-sm text-gray-500">{documents.length} files</p>
               </div>
             </div>
-            <button className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+            <button
+              onClick={() => setShowUpload(true)}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
               <Upload className="w-4 h-4 mr-2" />
               Upload
             </button>
@@ -420,7 +425,10 @@ export default function DocumentsPage() {
               }
             </p>
             {!searchQuery && !Object.values(filters).some(f => f) && (
-              <button className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+              <button
+                onClick={() => setShowUpload(true)}
+                className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
                 <Upload className="w-4 h-4 mr-2" />
                 Upload your first document
               </button>
@@ -428,6 +436,12 @@ export default function DocumentsPage() {
           </div>
         )}
       </div>
+
+      {/* Upload Modal */}
+      <DocumentUpload
+        isOpen={showUpload}
+        onClose={() => setShowUpload(false)}
+      />
     </div>
   )
 }
