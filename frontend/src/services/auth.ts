@@ -15,7 +15,8 @@ interface AuthState {
   user: User | null
   token: string | null
   isAuthenticated: boolean
-  login: (email: string, password: string, mfaCode?: string) => Promise<boolean>
+  login: (email: string, password: string, mfaCode?: string) => Promise<boolean | { mfa_required: boolean }>
+  register: (email: string, fullName: string, password: string) => Promise<boolean>
   logout: () => void
   setUser: (user: User) => void
 }
@@ -31,13 +32,13 @@ export const useAuthStore = create<AuthState>()(
         try {
           if (!mfaCode) {
             // First step: check if MFA is required
-            const response = await axios.post('/api/auth/login', {
+            const response = await axios.post('/auth/login', {
               email,
               password,
             })
 
             if (response.data.mfa_required) {
-              return false // Need MFA code
+              return { mfa_required: true } // Need MFA code
             }
 
             // MFA not required, we got the token directly
@@ -51,7 +52,7 @@ export const useAuthStore = create<AuthState>()(
               const user: User = {
                 id: 1, // TODO: Get from token or separate endpoint
                 email,
-                role: 'contributor', // TODO: Get from token
+                role: 'admin', // TODO: Get from token
                 is_active: true,
               }
 
@@ -66,7 +67,7 @@ export const useAuthStore = create<AuthState>()(
             }
           } else {
             // Second step: verify MFA and get token
-            const response = await axios.post('/api/auth/mfa/verify', {
+            const response = await axios.post('/auth/mfa/verify', {
               email,
               code: mfaCode,
             })
@@ -80,7 +81,7 @@ export const useAuthStore = create<AuthState>()(
             const user: User = {
               id: 1, // TODO: Get from token or separate endpoint
               email,
-              role: 'contributor', // TODO: Get from token
+              role: 'admin', // TODO: Get from token
               is_active: true,
             }
 
@@ -100,6 +101,23 @@ export const useAuthStore = create<AuthState>()(
         }
 
         return false
+      },
+
+      register: async (email: string, fullName: string, password: string) => {
+        try {
+          await axios.post('/auth/register', {
+            email,
+            full_name: fullName,
+            password,
+          })
+
+          toast.success('Registration submitted! Please wait for admin approval.')
+          return true
+        } catch (error: any) {
+          const message = error.response?.data?.detail || 'Registration failed'
+          toast.error(message)
+          return false
+        }
       },
 
       logout: () => {

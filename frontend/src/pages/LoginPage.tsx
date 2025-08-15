@@ -12,13 +12,22 @@ const loginSchema = z.object({
   mfaCode: z.string().optional(),
 })
 
+const registerSchema = z.object({
+  fullName: z.string().min(1, 'Full name is required'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+})
+
 type LoginForm = z.infer<typeof loginSchema>
+type RegisterForm = z.infer<typeof registerSchema>
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [needsMfa, setNeedsMfa] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuthStore()
+  const [showRegister, setShowRegister] = useState(false)
+  const [isRegistering, setIsRegistering] = useState(false)
+  const { login, register } = useAuthStore()
 
   // Reset MFA state when component mounts
   useEffect(() => {
@@ -26,13 +35,22 @@ export default function LoginPage() {
   }, [])
 
   const {
-    register,
+    register: loginRegister,
     handleSubmit,
     formState: { errors },
     getValues,
     watch,
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
+  })
+
+  const {
+    register: registerRegister,
+    handleSubmit: handleRegisterSubmit,
+    formState: { errors: registerErrors },
+    reset: resetRegisterForm,
+  } = useForm<RegisterForm>({
+    resolver: zodResolver(registerSchema),
   })
 
   // Watch email field to reset MFA state when user changes email
@@ -44,16 +62,31 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true)
     try {
-      const success = await login(data.email, data.password, data.mfaCode)
+      const result = await login(data.email, data.password, data.mfaCode)
 
-      if (!success && !data.mfaCode) {
+      // If login returns an object with mfa_required, handle MFA flow
+      if (typeof result === 'object' && result.mfa_required) {
         setNeedsMfa(true)
-      } else if (success) {
-        // Reset MFA state on successful login
+      } else if (result === true) {
+        // Successful login
         setNeedsMfa(false)
       }
+      // If result is false, login failed (error will be shown by auth store)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const onRegisterSubmit = async (data: RegisterForm) => {
+    setIsRegistering(true)
+    try {
+      const success = await register(data.email, data.fullName, data.password)
+      if (success) {
+        setShowRegister(false)
+        resetRegisterForm()
+      }
+    } finally {
+      setIsRegistering(false)
     }
   }
 
@@ -82,7 +115,7 @@ export default function LoginPage() {
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
-                  {...register('email')}
+                  {...loginRegister('email')}
                   type="email"
                   className={clsx(
                     'w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200',
@@ -105,7 +138,7 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
-                  {...register('password')}
+                  {...loginRegister('password')}
                   type={showPassword ? 'text' : 'password'}
                   className={clsx(
                     'w-full pl-12 pr-12 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200',
@@ -136,9 +169,9 @@ export default function LoginPage() {
                 </label>
                 <div className="relative">
                   <Shield className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    {...register('mfaCode')}
-                    type="text"
+                                  <input
+                  {...loginRegister('mfaCode')}
+                  type="text"
                     className={clsx(
                       'w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200',
                       errors.mfaCode && 'border-red-300 focus:border-red-500 focus:ring-red-500/20'
@@ -181,10 +214,107 @@ export default function LoginPage() {
         </div>
 
         <div className="text-center mt-8">
-          <p className="text-sm text-gray-400 font-medium">
+          <p className="text-sm text-gray-400 font-medium mb-4">
             Secure document management for journalists
           </p>
+          <div className="flex items-center justify-center space-x-2">
+            <span className="text-sm text-gray-500">Don't have an account?</span>
+            <button
+              onClick={() => setShowRegister(true)}
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              Request Access
+            </button>
+          </div>
         </div>
+
+        {/* Registration Modal */}
+        {showRegister && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl p-8 w-full max-w-md">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Request Access</h2>
+              <p className="text-gray-600 mb-6">
+                Submit your information to request access to the platform. An administrator will review your request.
+              </p>
+              <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    {...registerRegister('fullName')}
+                    type="text"
+                    className={clsx(
+                      "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
+                      registerErrors.fullName && "border-red-300 focus:border-red-500"
+                    )}
+                    placeholder="Your full name"
+                    disabled={isRegistering}
+                  />
+                  {registerErrors.fullName && (
+                    <p className="mt-1 text-sm text-red-500">{registerErrors.fullName.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    {...registerRegister('email')}
+                    type="email"
+                    className={clsx(
+                      "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
+                      registerErrors.email && "border-red-300 focus:border-red-500"
+                    )}
+                    placeholder="your.email@example.com"
+                    disabled={isRegistering}
+                  />
+                  {registerErrors.email && (
+                    <p className="mt-1 text-sm text-red-500">{registerErrors.email.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">
+                    Password
+                  </label>
+                  <input
+                    {...registerRegister('password')}
+                    type="password"
+                    className={clsx(
+                      "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
+                      registerErrors.password && "border-red-300 focus:border-red-500"
+                    )}
+                    placeholder="Create a secure password (min 8 characters)"
+                    disabled={isRegistering}
+                  />
+                  {registerErrors.password && (
+                    <p className="mt-1 text-sm text-red-500">{registerErrors.password.message}</p>
+                  )}
+                </div>
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowRegister(false)}
+                    className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold transition-colors"
+                    disabled={isRegistering}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={clsx(
+                      "flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors",
+                      isRegistering && "opacity-50 cursor-not-allowed"
+                    )}
+                    disabled={isRegistering}
+                  >
+                    {isRegistering ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
