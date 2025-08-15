@@ -4,6 +4,7 @@
 		○ Users should be able to upload hundreds or thousands of documents at once
 		○ User should be able to search them by words in the document
 		○ Users should be able to use AI to ask questions about the documents
+		- USERS SHOULD BE ABLE OT CONTROL WHO CAN SEE UPLOADED DOCUMENTS BY USER (user has to specify email addresses that can see, edit, view, etc. but, there should be an "everyone" option as well)
 		○ Administrator should be able to add remove users. Users should use MFA.
 		○ Users should be able to make notes or add comments on the documents online
 		○ You shares should also be able to easily redact portions of the document and export portions of the documents as PDF
@@ -12,6 +13,10 @@
 		○ User should be able to highlight sections of the document
 		○ User should be able to add tags to documents and then search documents by tags as well
 		- use Exoscale to build the infrastructure using terraform - the API key for exoscale is in .env file
+		- users should be able to click at any place in the document and add Comments
+		- users should be able to redact any portion of the document - and when that redacted document is exported, it should be exported as PDF but the text in that PDF should still be searchable, but, without the redacted portions
+		- in the document preview section, the document should appear in full 300 dpi resolution
+		- incorporate testing of all features into playwright and make sure to review and fix bugs that show up via playwright
 
 User should be able to redact PDF documents. All documents that are uploaded should turn into standard format, including images. All documents that are uploaded should be OCR. User should be able to redact documents using GUI and export sections of the document in PDF VIA GUI. Users should be able to ask questions about the document using AI (with RAG and Ollama behind the scenes) and also be able to search documents by words and phrases.
 

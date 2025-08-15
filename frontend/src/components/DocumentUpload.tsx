@@ -31,7 +31,7 @@ export default function DocumentUpload({ isOpen, onClose }: DocumentUploadProps)
       formData.append('source', 'Web Upload')
       formData.append('language', 'en')
 
-      const response = await axios.post('/documents/upload', formData, {
+      const response = await axios.post('/api/documents/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

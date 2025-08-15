@@ -48,9 +48,11 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
-    # API routes
+    # API routes (strip /api prefix when proxying to FastAPI)
     location /api/ {
-        proxy_pass http://localhost:8000;
+        # Using trailing slash ensures Nginx replaces the matching prefix
+        # so /api/foo -> /foo on the upstream (FastAPI app has no /api prefix)
+        proxy_pass http://localhost:8000/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           if (!mfaCode) {
             // First step: check if MFA is required
-            const response = await axios.post('/auth/login', {
+            const response = await axios.post('/api/auth/login', {
               email,
               password,
             })
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>()(
             }
           } else {
             // Second step: verify MFA and get token
-            const response = await axios.post('/auth/mfa/verify', {
+            const response = await axios.post('/api/auth/mfa/verify', {
               email,
               code: mfaCode,
             })
@@ -105,7 +105,7 @@ export const useAuthStore = create<AuthState>()(
 
       register: async (email: string, fullName: string, password: string) => {
         try {
-          await axios.post('/auth/register', {
+          await axios.post('/api/auth/register', {
             email,
             full_name: fullName,
             password,

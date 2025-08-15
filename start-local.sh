@@ -157,6 +157,15 @@ fi
 print_status "Setting up database tables..."
 poetry run python -c "from app.db import Base, engine; from app import models; Base.metadata.create_all(bind=engine)" || true
 
+# Create test environment setup
+print_status "Setting up test environment..."
+export TESTING=true
+export DATABASE_URL="sqlite:///./test.db"
+
+# Create uploads directory for testing
+mkdir -p uploads
+mkdir -p chroma_db
+
 # Start Celery worker in background
 print_status "Starting Celery worker..."
 poetry run celery -A app.tasks worker --loglevel=info > celery.log 2>&1 &
