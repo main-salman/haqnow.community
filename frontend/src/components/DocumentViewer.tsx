@@ -57,8 +57,8 @@ export default function DocumentViewer({
       tileSources: {
         type: 'image',
         url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
-        width: 800,
-        height: 1000,
+        width: 2400,
+        height: 3600,
         buildPyramid: false,
       },
       showNavigationControl: false,

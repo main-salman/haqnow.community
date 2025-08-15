@@ -50,7 +50,9 @@ ssh -i $SSH_KEY ubuntu@$SERVER_IP << EOF
     docker-compose up -d --build
     
     echo "🌐 Configuring Nginx..."
+    sudo cp haqnow-community.nginx /etc/nginx/sites-available/haqnow-community
     sudo ln -sf /etc/nginx/sites-available/haqnow-community /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default
     sudo nginx -t && sudo systemctl reload nginx
     
     echo "✅ Deployment complete!"

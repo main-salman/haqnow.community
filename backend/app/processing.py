@@ -116,17 +116,17 @@ def generate_tiles(
 
 
 def generate_thumbnail(
-    image_data: bytes, max_size: Tuple[int, int] = (800, 1200)
+    image_data: bytes, max_size: Tuple[int, int] = (2400, 3600)
 ) -> bytes:
-    """Generate thumbnail from page image"""
+    """Generate high-resolution thumbnail from page image for 300 DPI viewing"""
     image = Image.open(io.BytesIO(image_data))
 
     # Calculate thumbnail size maintaining aspect ratio
     image.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-    # Save as WebP with higher quality
+    # Save as WebP with maximum quality for 300 DPI
     output = io.BytesIO()
-    image.save(output, format="WebP", quality=95)
+    image.save(output, format="WebP", quality=100, method=6)
     return output.getvalue()
 
 
