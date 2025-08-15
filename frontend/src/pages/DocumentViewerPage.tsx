@@ -98,6 +98,24 @@ export default function DocumentViewerPage() {
 		}
 	}
 
+	const handleCreateRedaction = async (redactionData: {
+		page_number: number
+		x_start: number
+		y_start: number
+		x_end: number
+		y_end: number
+		reason?: string
+	}) => {
+		try {
+			await documentsApi.addRedaction(documentId, redactionData)
+			toast.success('Redaction added successfully')
+			// Refresh redactions
+			queryClient.invalidateQueries(['document-redactions', documentId])
+		} catch (error) {
+			toast.error('Failed to add redaction')
+		}
+	}
+
 	const handleAIQuestion = async () => {
 		if (!aiQuestion.trim()) return
 		
@@ -244,6 +262,8 @@ export default function DocumentViewerPage() {
 						onPageChange={setCurrentPage}
 						totalPages={3}
 						className="h-[70vh]"
+						redactionMode={redactionMode}
+						onRedactionCreate={handleCreateRedaction}
 					/>
 				</div>
 

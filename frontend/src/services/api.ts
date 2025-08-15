@@ -90,6 +90,17 @@ export const documentsApi = {
   deleteShare: (id: number, shareId: number) => 
     axios.delete(`/api/documents/${id}/shares/${shareId}`),
   checkAccess: (id: number) => axios.get(`/api/documents/${id}/access`),
+  
+  // Redactions
+  addRedaction: (id: number, redactionData: {
+    page_number: number;
+    x_start: number;
+    y_start: number;
+    x_end: number;
+    y_end: number;
+    reason?: string;
+  }) => axios.post(`/api/documents/${id}/redactions`, redactionData),
+  getRedactions: (id: number) => axios.get(`/api/documents/${id}/redactions`),
 }
 
 // Search API

@@ -114,7 +114,6 @@ class PresignedUploadResponse(BaseModel):
 
 
 class DocumentShareCreate(BaseModel):
-    document_id: int
     shared_with_email: str | None = None  # None for "everyone"
     permission_level: str  # "view" or "edit"
     is_everyone: bool = False

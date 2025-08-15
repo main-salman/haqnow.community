@@ -18,6 +18,15 @@ interface DocumentViewerProps {
   onPageChange?: (page: number) => void
   totalPages?: number
   className?: string
+  redactionMode?: boolean
+  onRedactionCreate?: (redaction: {
+    page_number: number
+    x_start: number
+    y_start: number
+    x_end: number
+    y_end: number
+    reason?: string
+  }) => void
 }
 
 export default function DocumentViewer({
@@ -25,13 +34,18 @@ export default function DocumentViewer({
   pageNumber = 0,
   onPageChange,
   totalPages = 1,
-  className
+  className,
+  redactionMode = false,
+  onRedactionCreate
 }: DocumentViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showRedactions, setShowRedactions] = useState(true)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [drawStart, setDrawStart] = useState<{x: number, y: number} | null>(null)
+  const [currentRedaction, setCurrentRedaction] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!viewerRef.current) return
@@ -85,6 +99,82 @@ export default function DocumentViewer({
         // TODO: Load and display redaction shapes
       }
     })
+
+    // Add redaction drawing handlers
+    if (redactionMode) {
+      osdViewer.addHandler('canvas-press', (event: any) => {
+        if (redactionMode && !isDrawing) {
+          const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
+          setDrawStart({x: viewportPoint.x, y: viewportPoint.y})
+          setIsDrawing(true)
+          
+          // Create visual redaction rectangle
+          const redactionDiv = document.createElement('div')
+          redactionDiv.style.position = 'absolute'
+          redactionDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.3)'
+          redactionDiv.style.border = '2px solid red'
+          redactionDiv.style.pointerEvents = 'none'
+          redactionDiv.style.zIndex = '1000'
+          
+          const pixelPoint = osdViewer.viewport.pixelFromPoint(viewportPoint)
+          redactionDiv.style.left = pixelPoint.x + 'px'
+          redactionDiv.style.top = pixelPoint.y + 'px'
+          redactionDiv.style.width = '0px'
+          redactionDiv.style.height = '0px'
+          
+          viewerRef.current?.appendChild(redactionDiv)
+          setCurrentRedaction(redactionDiv)
+        }
+      })
+
+      osdViewer.addHandler('canvas-drag', (event: any) => {
+        if (redactionMode && isDrawing && drawStart && currentRedaction) {
+          const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
+          const startPixel = osdViewer.viewport.pixelFromPoint({x: drawStart.x, y: drawStart.y})
+          const endPixel = osdViewer.viewport.pixelFromPoint(viewportPoint)
+          
+          const left = Math.min(startPixel.x, endPixel.x)
+          const top = Math.min(startPixel.y, endPixel.y)
+          const width = Math.abs(endPixel.x - startPixel.x)
+          const height = Math.abs(endPixel.y - startPixel.y)
+          
+          currentRedaction.style.left = left + 'px'
+          currentRedaction.style.top = top + 'px'
+          currentRedaction.style.width = width + 'px'
+          currentRedaction.style.height = height + 'px'
+        }
+      })
+
+      osdViewer.addHandler('canvas-release', (event: any) => {
+        if (redactionMode && isDrawing && drawStart && currentRedaction) {
+          const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
+          
+          // Calculate redaction coordinates in normalized space (0-1)
+          const x_start = Math.min(drawStart.x, viewportPoint.x)
+          const y_start = Math.min(drawStart.y, viewportPoint.y)
+          const x_end = Math.max(drawStart.x, viewportPoint.x)
+          const y_end = Math.max(drawStart.y, viewportPoint.y)
+          
+          // Only create redaction if it has meaningful size
+          if (Math.abs(x_end - x_start) > 0.01 && Math.abs(y_end - y_start) > 0.01) {
+            onRedactionCreate?.({
+              page_number: pageNumber,
+              x_start,
+              y_start,
+              x_end,
+              y_end,
+              reason: 'User redaction'
+            })
+          }
+          
+          // Clean up
+          currentRedaction.remove()
+          setCurrentRedaction(null)
+          setIsDrawing(false)
+          setDrawStart(null)
+        }
+      })
+    }
 
     setViewer(osdViewer)
 
