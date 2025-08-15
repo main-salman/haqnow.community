@@ -1,0 +1,12 @@
+# Copy this file to terraform.tfvars and fill in your values
+
+exoscale_api_key    = "XXXXXXXXXXXXXXXX"
+exoscale_api_secret = "XXXXXXXXXXXXXXXXXXXXXX"
+
+# Optional overrides
+zone          = "ch-gva-2"
+instance_type = "standard.large"
+disk_size     = 200
+ssh_key_name  = "haqnow-dev"
+db_plan       = "startup-4"
+pg_version    = "15"

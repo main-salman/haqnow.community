@@ -1,0 +1,108 @@
+Updating `history.txt` with your latest decisions (metadata, sharing ACL, states). Then I’ll present the finalized spec and ask 2 quick confirmations.
+Ran tool
+
+### Finalized architecture/spec/plan (Option B-only, updated with your decisions)
+
+- **Viewer/UI**
+  - Tiled image viewer (pan/zoom, mobile-friendly); overlays for highlights, comments, redaction rectangles; realtime presence; undo/redo.
+  - Bulk upload with progress; free-form tagging; faceted search; recent-first date displays.
+
+- **Permissions and sharing**
+  - Roles: admin, manager, contributor, viewer.
+  - Per-document ACLs: share with specific users by email (must exist; admin adds via `/admin`).
+  - Document-level roles: viewer/contributor.
+
+- **Metadata model (all optional unless noted)**
+  - Core: `title`, `description`, `tags` (free-form).
+  - Free text: `source`.
+  - Dates: `published_date`, `acquired_date`, `event_date`, `filing_date` (UI sorts recent first).
+  - Language: `language` (default `en` if unset).
+  - Status workflow: `new`, `in_review`, `verified`, `published` (editable; admin/manager).
+  - Mutability: all metadata editable anytime.
+
+- **Rendering and redaction**
+  - PDFs: rasterize to 300 DPI page images; tile as WebP (quality ~80).
+  - Images: normalize + tile (WebP).
+  - Office: on first view/export, convert to PDF via LibreOffice; rasterize + tile.
+  - Redaction: pixel burn-in on source page images; compose export PDF from redacted images; page-range export.
+  - Re-OCR after redaction to keep exports searchable; never expose pre-redaction text in exports.
+
+- **Text extraction, search, and AI**
+  - Extraction: Apache Tika when available; otherwise OCR (Tesseract via OCRmyPDF). Launch with English only.
+  - Indexing: PostgreSQL BM25 (`tsvector`) + vector (`pgvector`).
+  - RAG: Ollama (`mxbai-embed-large` embeddings, `llama3.1:8b-instruct` Q&A); citations link to page coordinates in viewer.
+
+- **APIs (admin-managed API keys via `/admin`)**
+  - Auth + TOTP; API key issue/rotate/revoke; keys have all scopes (ingest/search/export/admin).
+  - Uploads (multipart/resumable), documents/versions/pages/tiles, annotations/comments, redactions, exports, search, RAG.
+
+- **Data layout (summary)**
+  - `users`, `api_keys`, `documents`, `document_versions`, `pages` (dims/DPI), `renditions` (tiles/images/ocr/thumbnails/exports), `annotations`, `redactions`, `tags`, `document_tags`, `search_chunks`, `embeddings`, `audit_logs`, `document_acl`.
+
+- **Processing pipeline**
+  1) Upload to SOS `originals/` → enqueue.
+  2) Type detect → rasterize/normalize/convert as needed → generate tiles/thumbnails.
+  3) Extract text (Tika/OCR) → chunk + embed → index.
+  4) Export with redaction: apply masks → compose PDF → re-OCR → verify → store in `exports/`.
+
+- **Infra (budget-first)**
+  - 1–2 Exoscale VMs with Docker Compose: API (FastAPI), workers (Celery), realtime (WebSocket), Ollama.
+  - Exoscale DBaaS Postgres; Redis; SOS buckets.
+  - Terraform: VM(s), security groups, SOS buckets, DB instance, DNS scaffolding.
+  - Provisioning: after server up, we’ll output IP in `.env`; you add DNS; we configure Let’s Encrypt.
+
+- **Milestones**
+  - M1: Infra + Terraform baseline.
+  - M2: Auth (TOTP), admin `/admin` for users and API keys, uploads.
+  - M3: Rasterize/tiles/thumbnails; viewer.
+  - M4: Extraction/indexing; search UI.
+  - M5: Realtime overlays (comments/highlights/redactions).
+  - M6: Redaction export (page-range) + verification + audit logs.
+  - M7: RAG Q&A with citations; tuning.
+
+- **Acceptance**
+  - Any file opens quickly in tiled viewer; search with snippets; realtime collab; redacted PDF export verified safe; page-range export works; per-document sharing by email.
+
+### Two quick confirmations
+1) Approve WebP quality default at 80 for tiles (storage-optimized), with auto-adjust for text-heavy vs photo pages?
+2) Confirm that both admin and manager can change document status states, and contributors/viewers cannot.
+
+- Added your latest decisions (no mandatory metadata, ACL sharing by email, states editable, English-only OCR, re-OCR after redaction) to `history.txt`.
+
+### M1 detailed plan (Infra + Foundation)
+- Infra (Exoscale, budget-first):
+  - 1 VM (upgrade to 2 later): 8 vCPU / 16 GB RAM / 200 GB SSD. Security groups: allow 22, 80, 443; restrict Redis and Postgres to private.
+  - Exoscale DBaaS Postgres 15: 2 vCPU / 4–8 GB RAM; enable `pgvector` extension.
+  - Exoscale SOS buckets: `originals/`, `tiles/`, `ocr/`, `thumbnails/`, `exports/` (separate buckets or prefixes per env).
+  - Redis: container on VM for Celery + realtime awareness (move to managed later if needed).
+  - Reverse proxy/TLS: Traefik with Let’s Encrypt (HTTP-01 initially). Domain will be pointed after IP known.
+  - Ollama service on VM (models: `mxbai-embed-large`, `llama3.1:8b-instruct`).
+- Terraform layout:
+  - `infra/terraform/` with `environments/dev/` vars; modules for compute VM, security groups, DBaaS Postgres, SOS buckets, DNS scaffold, outputs (public IP).
+- Docker Compose baseline (`deploy/compose.yml`):
+  - Services: `traefik`, `api`, `worker`, `realtime`, `redis`, `ollama`.
+  - Networks: `internal` (api/worker/realtime/redis/ollama) and `web` (traefik front).
+- Security & ops:
+  - Secrets via instance env (dev `.env` locally only); rotate existing secrets; do not commit `.env`.
+  - Logs to stdout in JSON; health endpoints; basic dashboards.
+- Acceptance (M1):
+  - Terraform apply creates VM, DB, buckets; Traefik serves 80/443; Let’s Encrypt staging certs; Postgres and Redis reachable from VM; SOS buckets verified; Ollama responds.
+
+### M2 detailed plan (Auth + Admin + Uploads)
+- Auth & users:
+  - JWT sessions; TOTP setup (QR) and verification enforced.
+  - Roles: admin, manager, contributor, viewer.
+  - Admin GUI `/admin`: manage users (create, deactivate), display TOTP QR, reset MFA, manage document states.
+- API keys GUI:
+  - Issue/rotate/revoke keys (all scopes for MVP). Display last used, created at, optional expiry.
+- Uploads:
+  - Presigned S3 multipart uploads to SOS; 100 MB per file; client checksum; server-side intent/complete callbacks.
+  - Post-upload: register `document` + `document_version` with optional metadata/tags and initial ACL.
+- Document model & ACL:
+  - Per-document ACL entries; share to existing users by email; document-level roles: viewer/contributor.
+- Processing stubs:
+  - On new version: enqueue tiling/thumbnail job; persist job state (queued/running/failed/done) for UI.
+- UI (skeleton):
+  - Login + TOTP; `/admin` for users and API keys; Upload page (drag-drop); Documents list with filters and recent-first sorting.
+- Acceptance (M2):
+  - TOTP enforced login; admin can create users and API keys; files upload via multipart to SOS; documents list shows new uploads with tags/metadata; ACL sharing by email works.

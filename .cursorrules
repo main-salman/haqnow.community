@@ -1,0 +1,119 @@
+# Cursor Rules for Haqnow Community Platform
+
+## Core Development Rules
+
+### 1. Testing Requirements
+- **MANDATORY**: Every new feature implementation MUST include automated tests
+- Tests must be written simultaneously with the feature, not after
+- All tests must pass before any commit is made
+- Test coverage should be maintained at a high level
+- Use pytest for backend testing (already configured in pyproject.toml)
+- Tests should cover:
+  - Happy path scenarios
+  - Edge cases and error conditions
+  - Authentication and authorization
+  - API endpoints and data validation
+  - Database operations
+
+### 2. Documentation Requirements
+- **MANDATORY**: Update README.md with every new feature
+- README.md must include:
+  - New feature descriptions
+  - Architecture changes or updates
+  - API endpoint documentation
+  - Setup and deployment instructions
+  - Environment configuration changes
+- Keep architecture.txt updated with significant architectural changes
+- Document any new environment variables or configuration options
+
+### 3. Git Workflow and Automation
+- Set up pre-commit hooks to run tests automatically
+- All commits must pass the test suite
+- Use conventional commit messages (feat:, fix:, docs:, test:, etc.)
+- No direct commits to main branch without passing tests
+
+## Code Quality Standards
+
+### 4. Engineering Excellence
+- Work like a 10x/senior engineer
+- Always prefer simple, elegant solutions
+- Avoid code duplication - check for existing similar functionality first
+- Write environment-aware code (dev, test, prod)
+- Only make changes that are requested or clearly related to the task
+- When fixing bugs, exhaust existing implementation options before introducing new patterns
+
+### 5. Code Organization
+- Keep codebase clean and well-organized
+- Avoid files over 200-300 lines - refactor when approaching this limit
+- No scripts in files unless absolutely necessary
+- Remove old implementations when introducing new patterns
+- Follow existing project structure and naming conventions
+
+### 6. Data and Environment Management
+- Mocking data is ONLY for tests, never for dev or prod
+- Never add stubbing or fake data patterns to dev/prod code
+- Use proper environment configuration for different stages
+- Maintain separation between test, dev, and production data
+
+## Project-Specific Rules
+
+### 7. Backend Development (FastAPI/Python)
+- Follow FastAPI best practices
+- Use SQLAlchemy for database operations
+- Implement proper error handling and validation
+- Use Pydantic schemas for data validation
+- Follow the existing route organization pattern
+- Maintain proper authentication and authorization
+
+### 8. Infrastructure and Deployment
+- Update Terraform configurations when infrastructure changes
+- Maintain docker-compose.yml for local development
+- Document any new infrastructure requirements
+- Follow the existing module structure in infra/terraform/
+
+### 9. Security
+- Never commit sensitive data or credentials
+- Use proper environment variables for configuration
+- Implement proper authentication and authorization
+- Follow security best practices for API development
+- Validate all inputs and sanitize outputs
+
+### 10. Continuous Integration
+- Tests must run on every commit
+- Set up GitHub Actions or similar CI/CD pipeline
+- Automated deployment should only happen after all tests pass
+- Maintain build and deployment scripts
+
+## File Management
+
+### 11. History Tracking
+- Keep updating history.txt with all changes
+- Never delete content from history.txt
+- Learn from previous changes to avoid repetition
+- Document lessons learned and decisions made
+
+### 12. Dependencies
+- Keep poetry.lock updated
+- Document new dependencies and their purpose
+- Regularly update dependencies for security
+- Use specific version ranges in pyproject.toml
+
+## Enforcement
+
+These rules are enforced through:
+- Pre-commit hooks (to be set up)
+- Automated testing on commit
+- Code review requirements
+- Documentation review process
+
+## Getting Started
+
+To set up the development environment with these rules:
+
+1. Install pre-commit hooks: `pre-commit install`
+2. Run tests before any commit: `cd backend && poetry run pytest`
+3. Update documentation with every feature
+4. Follow the conventional commit format
+5. Ensure all tests pass before pushing
+
+Remember: Quality over speed. It's better to deliver fewer, well-tested features than many buggy ones.

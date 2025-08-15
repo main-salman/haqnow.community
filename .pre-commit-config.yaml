@@ -1,0 +1,40 @@
+repos:
+  - repo: local
+    hooks:
+      - id: run-tests
+        name: Run Tests
+        entry: bash -c 'cd backend && poetry run pytest'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+      
+      - id: check-readme-updated
+        name: Check README.md is updated
+        entry: bash -c 'git diff --cached --name-only | grep -E "\.(py|tf)$" && echo "Remember to update README.md with new features and architecture changes" || true'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        files: ^backend/
+        
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        files: ^backend/
+        args: ["--profile", "black"]
