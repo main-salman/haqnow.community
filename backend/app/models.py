@@ -14,6 +14,7 @@ class User(Base):
     totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    registration_status: Mapped[str] = mapped_column(String(32), default="pending")  # "pending", "approved", "rejected"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

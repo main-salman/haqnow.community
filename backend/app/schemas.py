@@ -14,15 +14,28 @@ class UserCreate(BaseModel):
     password: str
 
 
+class UserRegister(BaseModel):
+    email: EmailStr
+    full_name: str
+    password: str
+
+
 class UserOut(BaseModel):
     id: int
     email: EmailStr
     full_name: str | None = None
     role: str
     is_active: bool
+    registration_status: str | None = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class UserApproval(BaseModel):
+    user_id: int
+    action: str  # "approve" or "reject"
 
 
 class LoginRequest(BaseModel):
