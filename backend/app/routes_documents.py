@@ -54,11 +54,9 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    # Create uploads directory if it doesn't exist
-    # Always save into backend/uploads so worker and API share a consistent path in dev/prod
-    uploads_dir = (
-        Path("backend/uploads") if Path("backend").exists() else Path("uploads")
-    )
+    # Create uploads directory if it doesn't exist (backend/uploads absolute)
+    backend_root = Path(__file__).resolve().parents[1]
+    uploads_dir = backend_root / "uploads"
     uploads_dir.mkdir(exist_ok=True)
 
     # Save file locally for processing
