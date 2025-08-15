@@ -6,13 +6,16 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .export import get_export_service
-from .models import Document, ProcessingJob
+from .models import Document, DocumentShare, ProcessingJob
 from .redaction import get_redaction_service
 from .routes_auth import get_current_user
 from .s3_client import generate_presigned_upload
 from .schemas import (
     DocumentCreate,
     DocumentOut,
+    DocumentShareCreate,
+    DocumentShareOut,
+    DocumentShareUpdate,
     PresignedUploadRequest,
     PresignedUploadResponse,
 )
@@ -599,3 +602,156 @@ async def delete_document_export(
         )
 
     return result
+
+
+# Document Sharing Endpoints
+
+@router.post("/{document_id}/shares", response_model=DocumentShareOut)
+async def share_document(
+    document_id: int,
+    share_data: DocumentShareCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Share a document with specific users or everyone"""
+    # Verify document exists and user has permission
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Check if user owns the document or has edit permission
+    if document.uploader_id != current_user.id and current_user.role not in ["admin", "manager"]:
+        # Check if user has edit permission through existing shares
+        existing_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.shared_with_email == current_user.email,
+            DocumentShare.permission_level == "edit"
+        ).first()
+        if not existing_share:
+            raise HTTPException(status_code=403, detail="Permission denied")
+    
+    # Validate permission level
+    if share_data.permission_level not in ["view", "edit"]:
+        raise HTTPException(status_code=400, detail="Permission level must be 'view' or 'edit'")
+    
+    # Check for existing share
+    existing_share = None
+    if share_data.is_everyone:
+        existing_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.is_everyone == True
+        ).first()
+    elif share_data.shared_with_email:
+        existing_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.shared_with_email == share_data.shared_with_email
+        ).first()
+    
+    if existing_share:
+        # Update existing share
+        existing_share.permission_level = share_data.permission_level
+        existing_share.expires_at = share_data.expires_at
+        db.commit()
+        db.refresh(existing_share)
+        return existing_share
+    
+    # Create new share
+    document_share = DocumentShare(
+        document_id=document_id,
+        shared_by_user_id=current_user.id,
+        shared_with_email=share_data.shared_with_email if not share_data.is_everyone else None,
+        permission_level=share_data.permission_level,
+        is_everyone=share_data.is_everyone,
+        expires_at=share_data.expires_at
+    )
+    
+    db.add(document_share)
+    db.commit()
+    db.refresh(document_share)
+    
+    return document_share
+
+
+@router.get("/{document_id}/shares", response_model=list[DocumentShareOut])
+async def get_document_shares(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Get all shares for a document"""
+    # Verify document exists and user has permission
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Check if user owns the document or has permission
+    if document.uploader_id != current_user.id and current_user.role not in ["admin", "manager"]:
+        # Check if user has any permission through existing shares
+        user_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.shared_with_email == current_user.email
+        ).first()
+        everyone_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.is_everyone == True
+        ).first()
+        if not user_share and not everyone_share:
+            raise HTTPException(status_code=403, detail="Permission denied")
+    
+    shares = db.query(DocumentShare).filter(DocumentShare.document_id == document_id).all()
+    return shares
+
+
+@router.get("/{document_id}/access")
+async def check_document_access(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Check user's access level to a document"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Check access level
+    access_level = "none"
+    
+    # Document owner has full access
+    if document.uploader_id == current_user.id:
+        access_level = "owner"
+    # Admin/Manager have full access
+    elif current_user.role in ["admin", "manager"]:
+        access_level = "admin"
+    else:
+        # Check specific user shares
+        user_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.shared_with_email == current_user.email
+        ).first()
+        
+        # Check everyone shares
+        everyone_share = db.query(DocumentShare).filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.is_everyone == True
+        ).first()
+        
+        # Determine highest permission level
+        permissions = []
+        if user_share:
+            permissions.append(user_share.permission_level)
+        if everyone_share:
+            permissions.append(everyone_share.permission_level)
+        
+        if "edit" in permissions:
+            access_level = "edit"
+        elif "view" in permissions:
+            access_level = "view"
+    
+    return {
+        "document_id": document_id,
+        "access_level": access_level,
+        "can_view": access_level in ["view", "edit", "owner", "admin"],
+        "can_edit": access_level in ["edit", "owner", "admin"],
+        "can_share": access_level in ["owner", "admin"]
+    }

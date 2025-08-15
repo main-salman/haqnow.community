@@ -113,3 +113,31 @@ class PresignedUploadResponse(BaseModel):
     fields: dict
 
 
+class DocumentShareCreate(BaseModel):
+    document_id: int
+    shared_with_email: str | None = None  # None for "everyone"
+    permission_level: str  # "view" or "edit"
+    is_everyone: bool = False
+    expires_at: datetime | None = None
+
+
+class DocumentShareOut(BaseModel):
+    id: int
+    document_id: int
+    shared_by_user_id: int
+    shared_with_email: str | None = None
+    permission_level: str
+    is_everyone: bool
+    expires_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentShareUpdate(BaseModel):
+    permission_level: str | None = None
+    expires_at: datetime | None = None
+
+

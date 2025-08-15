@@ -89,3 +89,16 @@ class Redaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class DocumentShare(Base):
+    __tablename__ = "document_shares"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_id: Mapped[int] = mapped_column(Integer, ForeignKey("documents.id"), nullable=False)
+    shared_by_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    shared_with_email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)  # Null for "everyone"
+    permission_level: Mapped[str] = mapped_column(String(32), nullable=False)  # "view", "edit"
+    is_everyone: Mapped[bool] = mapped_column(Boolean, default=False)  # True for "everyone" sharing
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # Optional expiration
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+

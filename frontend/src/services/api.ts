@@ -74,6 +74,22 @@ export const documentsApi = {
     axios.post(`/api/documents/${id}/comments`, commentData),
   export: (id: number, options: { format: string; pages?: number[] }) =>
     axios.post(`/api/documents/${id}/export`, options),
+  
+  // Sharing
+  shareDocument: (id: number, shareData: {
+    shared_with_email?: string;
+    permission_level: 'view' | 'edit';
+    is_everyone?: boolean;
+    expires_at?: string;
+  }) => axios.post(`/api/documents/${id}/shares`, shareData),
+  getShares: (id: number) => axios.get(`/api/documents/${id}/shares`),
+  updateShare: (id: number, shareId: number, updateData: {
+    permission_level?: 'view' | 'edit';
+    expires_at?: string;
+  }) => axios.put(`/api/documents/${id}/shares/${shareId}`, updateData),
+  deleteShare: (id: number, shareId: number) => 
+    axios.delete(`/api/documents/${id}/shares/${shareId}`),
+  checkAccess: (id: number) => axios.get(`/api/documents/${id}/access`),
 }
 
 // Search API

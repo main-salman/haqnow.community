@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
 	ArrowLeft,
 	FileText,
@@ -22,14 +22,18 @@ import toast from 'react-hot-toast'
 export default function DocumentViewerPage() {
 	const { id } = useParams<{ id: string }>()
 	const documentId = parseInt(id || '0')
+	const queryClient = useQueryClient()
 	const [currentPage, setCurrentPage] = useState(0)
 	const [showSidebar, setShowSidebar] = useState(true)
-	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'ai'>('info')
+	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'ai' | 'sharing'>('info')
 	const [aiQuestion, setAiQuestion] = useState('')
 	const [newComment, setNewComment] = useState('')
 	const [aiAnswer, setAiAnswer] = useState('')
 	const [isLoadingAI, setIsLoadingAI] = useState(false)
 	const [redactionMode, setRedactionMode] = useState(false)
+	const [shareEmail, setShareEmail] = useState('')
+	const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
+	const [shareEveryone, setShareEveryone] = useState(false)
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -50,6 +54,12 @@ export default function DocumentViewerPage() {
 		enabled: !!documentId,
 	})
 
+	const { data: shares = [] } = useQuery({
+		queryKey: ['document-shares', documentId],
+		queryFn: () => documentsApi.getShares(documentId).then(res => res.data),
+		enabled: !!documentId,
+	})
+
 	// Handlers for functionality
 	const handleDownload = async () => {
 		try {
@@ -67,6 +77,24 @@ export default function DocumentViewerPage() {
 			toast.success('Document link copied to clipboard')
 		} catch (error) {
 			toast.error('Failed to copy link')
+		}
+	}
+
+	const handleCreateShare = async () => {
+		try {
+			const shareData = {
+				shared_with_email: shareEveryone ? undefined : shareEmail,
+				permission_level: sharePermission,
+				is_everyone: shareEveryone
+			}
+			await documentsApi.shareDocument(documentId, shareData)
+			toast.success('Document shared successfully')
+			setShareEmail('')
+			setShareEveryone(false)
+			// Refresh shares
+			queryClient.invalidateQueries(['document-shares', documentId])
+		} catch (error) {
+			toast.error('Failed to share document')
 		}
 	}
 
@@ -250,6 +278,15 @@ export default function DocumentViewerPage() {
 							>
 								AI Q&A
 							</button>
+							<button
+								onClick={() => setSidebarTab('sharing')}
+								className={clsx(
+									'px-3 py-2 text-sm font-medium rounded-lg transition-colors',
+									sidebarTab === 'sharing' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+								)}
+							>
+								Share
+							</button>
 						</div>
 
 						{sidebarTab === 'info' && (
@@ -356,6 +393,100 @@ export default function DocumentViewerPage() {
 										<p className="text-xs text-gray-500">Powered by local Ollama + RAG</p>
 									</div>
 								</div>
+							</div>
+						)}
+
+						{sidebarTab === 'sharing' && (
+							<div className="space-y-4">
+								<div>
+									<h3 className="text-sm font-semibold text-gray-900 mb-2">Share Document</h3>
+									<div className="space-y-3">
+										{/* Share with Everyone */}
+										<div className="flex items-center space-x-2">
+											<input
+												type="checkbox"
+												id="shareEveryone"
+												checked={shareEveryone}
+												onChange={(e) => setShareEveryone(e.target.checked)}
+												className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+											/>
+											<label htmlFor="shareEveryone" className="text-sm text-gray-700">
+												Share with everyone
+											</label>
+										</div>
+
+										{/* Email Input (disabled when sharing with everyone) */}
+										{!shareEveryone && (
+											<div>
+												<label className="block text-xs font-medium text-gray-700 mb-1">
+													Email Address
+												</label>
+												<input
+													type="email"
+													value={shareEmail}
+													onChange={(e) => setShareEmail(e.target.value)}
+													placeholder="user@example.com"
+													className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+												/>
+											</div>
+										)}
+
+										{/* Permission Level */}
+										<div>
+											<label className="block text-xs font-medium text-gray-700 mb-1">
+												Permission Level
+											</label>
+											<select
+												value={sharePermission}
+												onChange={(e) => setSharePermission(e.target.value as 'view' | 'edit')}
+												className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+											>
+												<option value="view">View Only</option>
+												<option value="edit">Can Edit</option>
+											</select>
+										</div>
+
+										{/* Share Button */}
+										<button
+											onClick={handleCreateShare}
+											disabled={!shareEveryone && !shareEmail.trim()}
+											className="w-full inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+										>
+											<Share2 className="w-4 h-4 mr-2" />
+											Share Document
+										</button>
+									</div>
+								</div>
+
+								{/* Existing Shares */}
+								{shares.length > 0 && (
+									<div>
+										<h4 className="text-sm font-semibold text-gray-900 mb-2">Current Shares</h4>
+										<div className="space-y-2">
+											{shares.map((share: any) => (
+												<div key={share.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+													<div className="flex-1">
+														<p className="text-sm font-medium text-gray-900">
+															{share.is_everyone ? 'Everyone' : share.shared_with_email}
+														</p>
+														<p className="text-xs text-gray-500">
+															{share.permission_level === 'view' ? 'View Only' : 'Can Edit'}
+														</p>
+													</div>
+													<button
+														onClick={() => documentsApi.deleteShare(documentId, share.id).then(() => {
+															queryClient.invalidateQueries(['document-shares', documentId])
+															toast.success('Share removed')
+														})}
+														className="text-red-600 hover:text-red-800 text-xs"
+													>
+														Remove
+													</button>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
 							</div>
 						)}
 					</aside>
