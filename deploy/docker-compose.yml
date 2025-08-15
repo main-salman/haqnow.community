@@ -3,7 +3,7 @@ services:
   api:
     image: python:3.11-slim
     working_dir: /srv
-    command: bash -lc "apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng libtesseract-dev && pip install poetry && cd backend && poetry install && mkdir -p uploads && cd .. && poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: bash -lc "apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng libtesseract-dev && pip install poetry && cd backend && poetry install && mkdir -p uploads && poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     volumes:
