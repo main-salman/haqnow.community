@@ -153,6 +153,12 @@ export default function DocumentViewerPage() {
 		}
 	}
 
+	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
+		// Create a simple default comment when user clicks
+		setNewComment((prev) => prev || 'New comment')
+		handleAddComment(x, y, page)
+	}
+
 	const handleDelete = async () => {
 		if (!confirm('Delete this document?')) return
 		try {
@@ -283,6 +289,7 @@ export default function DocumentViewerPage() {
 						className="h-[70vh]"
 						redactionMode={redactionMode}
 						onRedactionCreate={handleCreateRedaction}
+						onAddCommentAt={handleViewerClickAddComment}
 					/>
 				</div>
 

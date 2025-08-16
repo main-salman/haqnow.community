@@ -27,6 +27,7 @@ interface DocumentViewerProps {
     y_end: number
     reason?: string
   }) => void
+  onAddCommentAt?: (x: number, y: number, page: number) => void
 }
 
 export default function DocumentViewer({
@@ -36,7 +37,8 @@ export default function DocumentViewer({
   totalPages = 1,
   className,
   redactionMode = false,
-  onRedactionCreate
+  onRedactionCreate,
+  onAddCommentAt
 }: DocumentViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null)
@@ -86,15 +88,21 @@ export default function DocumentViewer({
       defaultZoomLevel: 1.0,
     })
 
+    // Handle single clicks to add comments (when not redacting)
+    osdViewer.addHandler('canvas-click', (event: any) => {
+      if (redactionMode) return
+      if (!onAddCommentAt) return
+      const vp = osdViewer.viewport.pointFromPixel(event.position)
+      onAddCommentAt(vp.x, vp.y, pageNumber)
+    })
+
     // Add overlay for annotations and redactions
     osdViewer.addHandler('open', () => {
-      // Add annotation overlays here
       if (showAnnotations) {
-        // TODO: Load and display annotations
+        // could render annotations later
       }
-
       if (showRedactions) {
-        // TODO: Load and display redaction shapes
+        // could render redactions later
       }
     })
 
@@ -153,7 +161,6 @@ export default function DocumentViewer({
           const x_end = Math.max(drawStart.x, viewportPoint.x)
           const y_end = Math.max(drawStart.y, viewportPoint.y)
 
-          // Only create redaction if it has meaningful size
           if (Math.abs(x_end - x_start) > 0.01 && Math.abs(y_end - y_start) > 0.01) {
             onRedactionCreate?.({
               page_number: pageNumber,
@@ -165,7 +172,6 @@ export default function DocumentViewer({
             })
           }
 
-          // Clean up
           currentRedaction.remove()
           setCurrentRedaction(null)
           setIsDrawing(false)
@@ -181,7 +187,7 @@ export default function DocumentViewer({
         osdViewer.destroy()
       }
     }
-  }, [documentId, pageNumber, showAnnotations, showRedactions])
+  }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode])
 
   const handleZoomIn = () => {
     if (viewer) {
