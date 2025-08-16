@@ -159,3 +159,21 @@ class GroupOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ContentDocCreate(BaseModel):
+    title: str
+    markdown: str
+    references: list[int] = []  # document IDs referenced
+
+
+class ContentDocOut(BaseModel):
+    id: int
+    document_id: int
+    title: str
+    markdown: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -6,11 +6,20 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .export import get_export_service
-from .models import Document, DocumentShare, Group, GroupMember, ProcessingJob
+from .models import (
+    Document,
+    DocumentContent,
+    DocumentShare,
+    Group,
+    GroupMember,
+    ProcessingJob,
+)
 from .redaction import get_redaction_service
 from .routes_auth import get_current_user
 from .s3_client import generate_presigned_upload
 from .schemas import (
+    ContentDocCreate,
+    ContentDocOut,
     DocumentCreate,
     DocumentOut,
     DocumentShareCreate,
@@ -84,6 +93,41 @@ async def upload_document(
     _enqueue_processing_jobs(document.id, db)
 
     return document
+
+
+# Create a markdown-authored document
+@router.post("/content", response_model=ContentDocOut)
+def create_content_document(
+    payload: ContentDocCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # Create a Document row for dashboard visibility
+    doc = Document(
+        title=payload.title,
+        description=payload.title,
+        source="Authored",
+        language="en",
+        uploader_id=current_user.id,
+        status="completed",
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    content = DocumentContent(document_id=doc.id, markdown=payload.markdown)
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+
+    return ContentDocOut(
+        id=content.id,
+        document_id=doc.id,
+        title=doc.title,
+        markdown=content.markdown,
+        created_at=content.created_at,
+        updated_at=content.updated_at,
+    )
 
 
 # Group management endpoints

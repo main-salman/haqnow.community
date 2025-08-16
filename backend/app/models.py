@@ -172,3 +172,17 @@ class GroupMember(Base):
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# Authored content documents (Markdown)
+class DocumentContent(Base):
+    __tablename__ = "document_contents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("documents.id"), nullable=False, index=True
+    )
+    markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
