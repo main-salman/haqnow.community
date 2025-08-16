@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -19,6 +19,7 @@ import { documentsApi, searchApi } from '../services/api'
 import DocumentViewer from '../components/DocumentViewer'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
+import { io, Socket } from 'socket.io-client'
 
 export default function DocumentViewerPage() {
 	const { id } = useParams<{ id: string }>()
@@ -35,6 +36,9 @@ export default function DocumentViewerPage() {
 	const [shareEmail, setShareEmail] = useState('')
 	const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
 	const [shareEveryone, setShareEveryone] = useState(false)
+	const socketRef = useRef<Socket | null>(null)
+	const markersLayerRef = useRef<HTMLDivElement | null>(null)
+	const [liveComments, setLiveComments] = useState<any[]>([])
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -153,10 +157,69 @@ export default function DocumentViewerPage() {
 		}
 	}
 
+	useEffect(() => {
+		// connect to socket server
+		const s = io('/socket.io', { path: '/socket.io', transports: ['websocket'] })
+		socketRef.current = s
+		s.on('connect', () => {
+			s.emit('join_document', { document_id: documentId })
+		})
+		s.on('document_state', (state: any) => {
+			if (state?.comments) setLiveComments(state.comments)
+		})
+		s.on('comment_added', (payload: any) => {
+			setLiveComments((prev) => [...prev, payload.comment])
+		})
+		return () => {
+			s.emit('leave_document', { document_id: documentId })
+			s.disconnect()
+		}
+	}, [documentId])
+
+	useEffect(() => {
+		// render markers overlay
+		const container = document.querySelector('[data-testid="viewer-container"]') as HTMLDivElement | null
+		if (!container) return
+		// create layer if not exists
+		if (!markersLayerRef.current) {
+			const layer = document.createElement('div')
+			layer.style.position = 'absolute'
+			layer.style.inset = '0'
+			layer.style.pointerEvents = 'none'
+			container.appendChild(layer)
+			markersLayerRef.current = layer
+		}
+		const layer = markersLayerRef.current!
+		layer.innerHTML = ''
+		liveComments.forEach((c) => {
+			if (typeof c.x_position === 'number' && typeof c.y_position === 'number' && c.page_number === currentPage) {
+				const dot = document.createElement('div')
+				dot.title = c.content || 'Comment'
+				dot.style.position = 'absolute'
+				dot.style.width = '10px'
+				dot.style.height = '10px'
+				dot.style.borderRadius = '9999px'
+				dot.style.background = '#2563eb'
+				dot.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.3)'
+				// positions are normalized from viewer
+				dot.style.left = `${c.x_position * 100}%`
+				dot.style.top = `${c.y_position * 100}%`
+				dot.style.transform = 'translate(-50%, -50%)'
+				layer.appendChild(dot)
+			}
+		})
+	}, [liveComments, currentPage])
+
 	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
-		// Create a simple default comment when user clicks
 		setNewComment((prev) => prev || 'New comment')
 		handleAddComment(x, y, page)
+		// emit live comment marker to others
+		if (socketRef.current) {
+			socketRef.current.emit('add_comment', {
+				document_id: documentId,
+				comment: { page_number: page, x_position: x, y_position: y, content: newComment || 'New comment' }
+			})
+		}
 	}
 
 	const handleDelete = async () => {

@@ -242,7 +242,7 @@ export default function DocumentViewer({
   return (
     <div className={clsx('relative bg-gray-100 rounded-lg overflow-hidden', className)}>
       {/* Viewer Container */}
-      <div ref={viewerRef} className="w-full h-full min-h-[600px]" />
+      <div ref={viewerRef} data-testid="viewer-container" className="w-full h-full min-h-[600px]" />
 
       {/* Toolbar */}
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2 flex items-center space-x-2">
