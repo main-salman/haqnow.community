@@ -42,18 +42,30 @@ class ExportService:
             Dict with export info and download URL
         """
         try:
-            # Get document info
-            s3_client = get_s3_client()
-
-            # Download original document to determine page count
-            original_key = f"uploads/{document_id}/original"
+            # Try to load original from S3; if not available, use local uploads path
+            original_data = None
             try:
+                s3_client = get_s3_client()
+                original_key = f"uploads/{document_id}/original"
                 response = s3_client.get_object(
                     Bucket=self.settings.s3_bucket_originals, Key=original_key
                 )
                 original_data = response["Body"].read()
-            except Exception as e:
-                logger.error(f"Failed to download original document {document_id}: {e}")
+            except Exception:
+                pass
+
+            if original_data is None:
+                # Attempt local path fallbacks
+                candidates = [
+                    f"/srv/backend/uploads/{document_id}.pdf",
+                    f"/srv/backend/uploads/{document_id}",
+                ]
+                for path in candidates:
+                    if os.path.exists(path) and os.path.isfile(path):
+                        with open(path, "rb") as f:
+                            original_data = f.read()
+                            break
+            if original_data is None:
                 return {"success": False, "error": "Original document not found"}
 
             # Get total page count
@@ -174,12 +186,22 @@ class ExportService:
 
             # Upload to S3
             export_key = f"exports/{document_id}/{export_filename}"
-            upload_to_s3(
-                self.settings.s3_bucket_exports,
-                export_key,
-                pdf_bytes,
-                "application/pdf",
-            )
+            try:
+                upload_to_s3(
+                    self.settings.s3_bucket_exports,
+                    export_key,
+                    pdf_bytes,
+                    "application/pdf",
+                )
+                download_url = f"/api/documents/{document_id}/exports/{export_filename}"
+            except Exception:
+                # Fallback to local filesystem
+                base_dir = f"/srv/processed/exports/{document_id}"
+                os.makedirs(base_dir, exist_ok=True)
+                local_path = f"{base_dir}/{export_filename}"
+                with open(local_path, "wb") as f:
+                    f.write(pdf_bytes)
+                download_url = f"/api/documents/{document_id}/exports/{export_filename}"
 
             return {
                 "success": True,
@@ -188,7 +210,7 @@ class ExportService:
                 "filename": export_filename,
                 "pages_exported": len(pages_to_export),
                 "file_size": len(pdf_bytes),
-                "download_url": f"/api/documents/{document_id}/exports/{export_filename}",
+                "download_url": download_url,
                 "expires_at": "2024-12-31T23:59:59Z",  # Would calculate actual expiry
             }
 
@@ -324,28 +346,41 @@ class ExportService:
     async def list_exports(self, document_id: int) -> Dict[str, Any]:
         """List all available exports for a document"""
         try:
-            s3_client = get_s3_client()
-            prefix = f"exports/{document_id}/"
-
-            response = s3_client.list_objects_v2(
-                Bucket=self.settings.s3_bucket_exports, Prefix=prefix
-            )
-
             exports = []
-            for obj in response.get("Contents", []):
-                key = obj["Key"]
-                filename = key.split("/")[-1]
-
-                # Skip directory markers
-                if filename:
-                    exports.append(
-                        {
-                            "filename": filename,
-                            "size": obj["Size"],
-                            "created_at": obj["LastModified"].isoformat(),
-                            "download_url": f"/api/documents/{document_id}/exports/{filename}",
-                        }
-                    )
+            try:
+                s3_client = get_s3_client()
+                prefix = f"exports/{document_id}/"
+                response = s3_client.list_objects_v2(
+                    Bucket=self.settings.s3_bucket_exports, Prefix=prefix
+                )
+                for obj in response.get("Contents", []):
+                    key = obj["Key"]
+                    filename = key.split("/")[-1]
+                    if filename:
+                        exports.append(
+                            {
+                                "filename": filename,
+                                "size": obj["Size"],
+                                "created_at": obj["LastModified"].isoformat(),
+                                "download_url": f"/api/documents/{document_id}/exports/{filename}",
+                            }
+                        )
+            except Exception:
+                # Fallback to local listing
+                base_dir = f"/srv/processed/exports/{document_id}"
+                if os.path.isdir(base_dir):
+                    for name in os.listdir(base_dir):
+                        path = os.path.join(base_dir, name)
+                        if os.path.isfile(path):
+                            stat = os.stat(path)
+                            exports.append(
+                                {
+                                    "filename": name,
+                                    "size": stat.st_size,
+                                    "created_at": "",
+                                    "download_url": f"/api/documents/{document_id}/exports/{name}",
+                                }
+                            )
 
             return {
                 "success": True,

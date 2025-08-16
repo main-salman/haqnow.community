@@ -2,6 +2,7 @@ import os
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .config import get_settings
 
@@ -11,11 +12,24 @@ class Base(DeclarativeBase):
 
 
 settings = get_settings()
-# Use in-memory sqlite during tests to avoid disk I/O issues
-_database_url = settings.database_url
+
+# Use a robust SQLite setup for tests to avoid disk I/O and threading issues.
 if os.getenv("PYTEST_CURRENT_TEST"):
-    _database_url = "sqlite+pysqlite:///:memory:"
-engine = create_engine(_database_url, future=True)
+    # Single in-memory database shared across the process
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    engine = create_engine(
+        settings.database_url,
+        future=True,
+        connect_args={"check_same_thread": False}
+        if settings.database_url.startswith("sqlite")
+        else {},
+    )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
