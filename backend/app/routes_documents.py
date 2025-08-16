@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .export import get_export_service
-from .models import Document, DocumentShare, ProcessingJob
+from .models import Document, DocumentShare, Group, GroupMember, ProcessingJob
 from .redaction import get_redaction_service
 from .routes_auth import get_current_user
 from .s3_client import generate_presigned_upload
@@ -16,6 +16,9 @@ from .schemas import (
     DocumentShareCreate,
     DocumentShareOut,
     DocumentShareUpdate,
+    GroupCreate,
+    GroupMemberAdd,
+    GroupOut,
     PresignedUploadRequest,
     PresignedUploadResponse,
 )
@@ -81,6 +84,49 @@ async def upload_document(
     _enqueue_processing_jobs(document.id, db)
 
     return document
+
+
+# Group management endpoints
+@router.post("/groups", response_model=GroupOut)
+def create_group(
+    payload: GroupCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    group = Group(name=payload.name, owner_user_id=current_user.id)
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    return group
+
+
+@router.post("/groups/{group_id}/members")
+def add_group_member(
+    group_id: int,
+    payload: GroupMemberAdd,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if group.owner_user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed")
+    gm = GroupMember(group_id=group_id, email=payload.email)
+    db.add(gm)
+    db.commit()
+    return {"success": True}
+
+
+@router.get("/groups", response_model=list[GroupOut])
+def list_groups(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return (
+        db.query(Group)
+        .filter(
+            (Group.owner_user_id == current_user.id) | (current_user.role == "admin")
+        )
+        .all()
+    )
 
 
 @router.post("/", response_model=DocumentOut)
@@ -661,6 +707,15 @@ async def share_document(
             status_code=400, detail="Permission level must be 'view' or 'edit'"
         )
 
+    # Group sharing support: if group_id provided, expand to individual emails at create-time
+    emails_from_group: list[str] = []
+    if getattr(share_data, "group_id", None):
+        group = db.query(Group).filter(Group.id == share_data.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        members = db.query(GroupMember).filter(GroupMember.group_id == group.id).all()
+        emails_from_group = [m.email for m in members]
+
     # Check for existing share
     existing_share = None
     if share_data.is_everyone:
@@ -690,23 +745,41 @@ async def share_document(
         db.refresh(existing_share)
         return existing_share
 
-    # Create new share
-    document_share = DocumentShare(
-        document_id=document_id,
-        shared_by_user_id=current_user.id,
-        shared_with_email=share_data.shared_with_email
-        if not share_data.is_everyone
-        else None,
-        permission_level=share_data.permission_level,
-        is_everyone=share_data.is_everyone,
-        expires_at=share_data.expires_at,
-    )
+    # Create new share(s)
+    created_share = None
+    if emails_from_group:
+        for email in emails_from_group:
+            s = DocumentShare(
+                document_id=document_id,
+                shared_by_user_id=current_user.id,
+                shared_with_email=email,
+                permission_level=share_data.permission_level,
+                is_everyone=False,
+                expires_at=share_data.expires_at,
+            )
+            db.add(s)
+            created_share = s
+        db.commit()
+        if created_share:
+            db.refresh(created_share)
+        return created_share
+    else:
+        document_share = DocumentShare(
+            document_id=document_id,
+            shared_by_user_id=current_user.id,
+            shared_with_email=share_data.shared_with_email
+            if not share_data.is_everyone
+            else None,
+            permission_level=share_data.permission_level,
+            is_everyone=share_data.is_everyone,
+            expires_at=share_data.expires_at,
+        )
 
-    db.add(document_share)
-    db.commit()
-    db.refresh(document_share)
+        db.add(document_share)
+        db.commit()
+        db.refresh(document_share)
 
-    return document_share
+        return document_share
 
 
 @router.get("/{document_id}/shares", response_model=list[DocumentShareOut])
@@ -749,7 +822,21 @@ async def get_document_shares(
     shares = (
         db.query(DocumentShare).filter(DocumentShare.document_id == document_id).all()
     )
-    return shares
+    return [
+        DocumentShareOut(
+            id=s.id,
+            document_id=s.document_id,
+            shared_by_user_id=s.shared_by_user_id,
+            shared_with_email=s.shared_with_email,
+            permission_level=s.permission_level,
+            is_everyone=s.is_everyone,
+            expires_at=s.expires_at,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+            group_id=None,
+        )
+        for s in shares
+    ]
 
 
 @router.get("/{document_id}/access")

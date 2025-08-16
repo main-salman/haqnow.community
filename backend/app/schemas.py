@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -118,6 +119,7 @@ class DocumentShareCreate(BaseModel):
     permission_level: str  # "view" or "edit"
     is_everyone: bool = False
     expires_at: datetime | None = None
+    group_id: int | None = None
 
 
 class DocumentShareOut(BaseModel):
@@ -130,6 +132,7 @@ class DocumentShareOut(BaseModel):
     expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    group_id: int | None = None
 
     class Config:
         from_attributes = True
@@ -140,3 +143,19 @@ class DocumentShareUpdate(BaseModel):
     expires_at: datetime | None = None
 
 
+class GroupCreate(BaseModel):
+    name: str
+
+
+class GroupMemberAdd(BaseModel):
+    email: str
+
+
+class GroupOut(BaseModel):
+    id: int
+    name: str
+    owner_user_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
