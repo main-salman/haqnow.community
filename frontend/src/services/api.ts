@@ -62,6 +62,9 @@ export const documentsApi = {
   get: (id: number) => axios.get<Document>(`/api/documents/${id}`),
   create: (data: Partial<Document>) => axios.post<Document>('/api/documents/', data),
   delete: (id: number) => axios.delete(`/api/documents/${id}`),
+  // Authored content documents
+  createContent: (data: { title: string; markdown: string; references?: number[] }) =>
+    axios.post('/api/documents/content', data),
   getJobs: (id: number) => axios.get<ProcessingJob[]>(`/api/documents/${id}/jobs`),
   getPresignedUpload: (filename: string, contentType: string, size: number) =>
     axios.post<PresignedUploadResponse>('/api/documents/presigned-upload', {

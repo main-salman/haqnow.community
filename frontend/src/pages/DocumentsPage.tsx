@@ -39,6 +39,9 @@ export default function DocumentsPage() {
     language: '',
     status: '',
   })
+  const [showCreate, setShowCreate] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newMarkdown, setNewMarkdown] = useState('')
 
   const queryClient = useQueryClient()
 
@@ -145,13 +148,22 @@ export default function DocumentsPage() {
                 <p className="text-sm text-gray-500">{documents.length} files</p>
               </div>
             </div>
-            <button
-              onClick={() => setShowUpload(true)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Upload
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowUpload(true)}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Upload
+              </button>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                New Doc
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -464,6 +476,57 @@ export default function DocumentsPage() {
         isOpen={showUpload}
         onClose={() => setShowUpload(false)}
       />
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Create Document</h3>
+              <button onClick={() => setShowCreate(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <input
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Title"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <textarea
+                  value={newMarkdown}
+                  onChange={(e) => setNewMarkdown(e.target.value)}
+                  placeholder="# Markdown content"
+                  className="w-full h-72 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                />
+                <div className="h-72 overflow-auto border border-gray-200 rounded-lg p-3 bg-gray-50 text-sm">
+                  <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: newMarkdown.replace(/\n/g, '<br/>') }} />
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t flex items-center justify-end space-x-2">
+              <button onClick={() => setShowCreate(false)} className="px-3 py-2 text-sm rounded-lg border">Cancel</button>
+              <button
+                onClick={async () => {
+                  if (!newTitle.trim() || !newMarkdown.trim()) { toast.error('Title and content required'); return }
+                  try {
+                    await documentsApi.createContent({ title: newTitle, markdown: newMarkdown })
+                    setShowCreate(false)
+                    setNewTitle('')
+                    setNewMarkdown('')
+                    queryClient.invalidateQueries({ queryKey: ['documents'] })
+                    toast.success('Document created')
+                  } catch (e: any) {
+                    toast.error(e?.response?.data?.detail || 'Create failed')
+                  }
+                }}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
