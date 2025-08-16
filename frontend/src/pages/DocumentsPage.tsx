@@ -20,7 +20,8 @@ import {
   List,
   SortAsc,
   FolderOpen,
-  File
+  File,
+  Trash2
 } from 'lucide-react'
 import { documentsApi, Document } from '../services/api'
 import { clsx } from 'clsx'
@@ -44,6 +45,19 @@ export default function DocumentsPage() {
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ['documents', searchQuery, filters],
     queryFn: () => documentsApi.list().then(res => res.data),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await documentsApi.delete(id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success('Document deleted')
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Delete failed')
+    }
   })
 
   // Filter documents based on search and filters
@@ -336,8 +350,12 @@ export default function DocumentsPage() {
                           <button className="p-1 text-gray-400 hover:text-gray-600 rounded">
                             <Download className="w-4 h-4" />
                           </button>
-                          <button className="p-1 text-gray-400 hover:text-gray-600 rounded">
-                            <MoreHorizontal className="w-4 h-4" />
+                          <button
+                            onClick={(e) => { e.preventDefault(); if (confirm('Delete this document?')) deleteMutation.mutate(doc.id) }}
+                            className="p-1 text-red-500 hover:text-red-700 rounded"
+                            title="Delete document"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -398,8 +416,12 @@ export default function DocumentsPage() {
                             <button className="p-1 text-gray-400 hover:text-gray-600 rounded">
                               <Download className="w-4 h-4" />
                             </button>
-                            <button className="p-1 text-gray-400 hover:text-gray-600 rounded">
-                              <MoreHorizontal className="w-4 h-4" />
+                            <button
+                              onClick={(e) => { e.preventDefault(); if (confirm('Delete this document?')) deleteMutation.mutate(doc.id) }}
+                              className="p-1 text-red-500 hover:text-red-700 rounded"
+                              title="Delete document"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>

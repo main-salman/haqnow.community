@@ -61,6 +61,7 @@ export const documentsApi = {
   list: () => axios.get<Document[]>('/api/documents/'),
   get: (id: number) => axios.get<Document>(`/api/documents/${id}`),
   create: (data: Partial<Document>) => axios.post<Document>('/api/documents/', data),
+  delete: (id: number) => axios.delete(`/api/documents/${id}`),
   getJobs: (id: number) => axios.get<ProcessingJob[]>(`/api/documents/${id}/jobs`),
   getPresignedUpload: (filename: string, contentType: string, size: number) =>
     axios.post<PresignedUploadResponse>('/api/documents/presigned-upload', {
@@ -70,11 +71,11 @@ export const documentsApi = {
     }),
   download: (id: number) => axios.get(`/api/documents/${id}/download`),
   getComments: (id: number) => axios.get(`/api/documents/${id}/comments`),
-  addComment: (id: number, commentData: any) => 
+  addComment: (id: number, commentData: any) =>
     axios.post(`/api/documents/${id}/comments`, commentData),
   export: (id: number, options: { format: string; pages?: number[] }) =>
     axios.post(`/api/documents/${id}/export`, options),
-  
+
   // Sharing
   shareDocument: (id: number, shareData: {
     shared_with_email?: string;
@@ -87,10 +88,10 @@ export const documentsApi = {
     permission_level?: 'view' | 'edit';
     expires_at?: string;
   }) => axios.put(`/api/documents/${id}/shares/${shareId}`, updateData),
-  deleteShare: (id: number, shareId: number) => 
+  deleteShare: (id: number, shareId: number) =>
     axios.delete(`/api/documents/${id}/shares/${shareId}`),
   checkAccess: (id: number) => axios.get(`/api/documents/${id}/access`),
-  
+
   // Redactions
   addRedaction: (id: number, redactionData: {
     page_number: number;

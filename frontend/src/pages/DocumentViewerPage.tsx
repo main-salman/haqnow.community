@@ -12,7 +12,8 @@ import {
 	AlertCircle,
 	Bot,
 	Edit3,
-	Send
+	Send,
+	Trash2
 } from 'lucide-react'
 import { documentsApi, searchApi } from '../services/api'
 import DocumentViewer from '../components/DocumentViewer'
@@ -118,7 +119,7 @@ export default function DocumentViewerPage() {
 
 	const handleAIQuestion = async () => {
 		if (!aiQuestion.trim()) return
-		
+
 		setIsLoadingAI(true)
 		try {
 			const response = await searchApi.askQuestion(documentId, aiQuestion)
@@ -134,7 +135,7 @@ export default function DocumentViewerPage() {
 
 	const handleAddComment = async (x?: number, y?: number, pageNumber?: number) => {
 		if (!newComment.trim()) return
-		
+
 		try {
 			const commentData = {
 				content: newComment,
@@ -149,6 +150,17 @@ export default function DocumentViewerPage() {
 			queryClient.invalidateQueries(['document-comments', documentId])
 		} catch (error) {
 			toast.error('Failed to add comment')
+		}
+	}
+
+	const handleDelete = async () => {
+		if (!confirm('Delete this document?')) return
+		try {
+			await documentsApi.delete(documentId)
+			toast.success('Document deleted')
+			window.location.href = '/documents'
+		} catch (error: any) {
+			toast.error(error?.response?.data?.detail || 'Delete failed')
 		}
 	}
 
@@ -211,39 +223,46 @@ export default function DocumentViewerPage() {
 							<ArrowLeft className="h-5 w-5" />
 						</Link>
 						<div className="min-w-0">
-							<h1 className="text-base font-semibold text-gray-900 truncate">{document.title}</h1>
+							<h1 className="text_base font-semibold text-gray-900 truncate">{document.title}</h1>
 							<p className="text-xs text-gray-500 truncate">{document.description || 'No description'}</p>
 						</div>
 					</div>
 					<div className="flex items-center space-x-2">
-						<button 
+						<button
 							onClick={handleShare}
 							title="Share document link"
 							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
 						>
 							<Share2 className="h-4 w-4 mr-2" /> Share
 						</button>
-						<button 
+						<button
 							onClick={handleDownload}
 							title="Download original document"
 							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
 						>
 							<Download className="h-4 w-4 mr-2" /> Download
 						</button>
-						<button 
+						<button
+							onClick={handleDelete}
+							title="Delete document"
+							className="px-3 py-2 rounded-lg text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 inline-flex items-center"
+						>
+							<Trash2 className="h-4 w-4 mr-2" /> Delete
+						</button>
+						<button
 							onClick={() => setRedactionMode(!redactionMode)}
 							title={redactionMode ? "Exit redaction mode" : "Enter redaction mode"}
 							className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center ${
-								redactionMode 
-									? 'bg-red-100 text-red-700 hover:bg-red-200' 
+								redactionMode
+									? 'bg-red-100 text-red-700 hover:bg-red-200'
 									: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
 							}`}
 						>
 							<Edit3 className="h-4 w-4" />
 							{redactionMode && <span className="ml-2">Exit Redact</span>}
 						</button>
-						<button 
-							onClick={() => setShowSidebar(!showSidebar)} 
+						<button
+							onClick={() => setShowSidebar(!showSidebar)}
 							title="Toggle sidebar"
 							className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
 						>
@@ -391,8 +410,8 @@ export default function DocumentViewerPage() {
 												className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 												disabled={isLoadingAI}
 											/>
-											<button 
-												onClick={handleAIQuestion} 
+											<button
+												onClick={handleAIQuestion}
 												disabled={!aiQuestion.trim() || isLoadingAI}
 												title="Ask AI about this document"
 												className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
