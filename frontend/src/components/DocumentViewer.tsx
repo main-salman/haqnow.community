@@ -57,8 +57,6 @@ export default function DocumentViewer({
       tileSources: {
         type: 'image',
         url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
-        width: 2400,
-        height: 3600,
         buildPyramid: false,
       },
       showNavigationControl: false,
@@ -84,8 +82,8 @@ export default function DocumentViewer({
       wrapVertical: false,
       visibilityRatio: 0.1,
       minZoomLevel: 0.1,
-      maxZoomLevel: 10,
-      defaultZoomLevel: 0.8,
+      maxZoomLevel: 20,
+      defaultZoomLevel: 1.0,
     })
 
     // Add overlay for annotations and redactions
@@ -107,7 +105,7 @@ export default function DocumentViewer({
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
           setDrawStart({x: viewportPoint.x, y: viewportPoint.y})
           setIsDrawing(true)
-          
+
           // Create visual redaction rectangle
           const redactionDiv = document.createElement('div')
           redactionDiv.style.position = 'absolute'
@@ -115,13 +113,13 @@ export default function DocumentViewer({
           redactionDiv.style.border = '2px solid red'
           redactionDiv.style.pointerEvents = 'none'
           redactionDiv.style.zIndex = '1000'
-          
+
           const pixelPoint = osdViewer.viewport.pixelFromPoint(viewportPoint)
           redactionDiv.style.left = pixelPoint.x + 'px'
           redactionDiv.style.top = pixelPoint.y + 'px'
           redactionDiv.style.width = '0px'
           redactionDiv.style.height = '0px'
-          
+
           viewerRef.current?.appendChild(redactionDiv)
           setCurrentRedaction(redactionDiv)
         }
@@ -132,12 +130,12 @@ export default function DocumentViewer({
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
           const startPixel = osdViewer.viewport.pixelFromPoint({x: drawStart.x, y: drawStart.y})
           const endPixel = osdViewer.viewport.pixelFromPoint(viewportPoint)
-          
+
           const left = Math.min(startPixel.x, endPixel.x)
           const top = Math.min(startPixel.y, endPixel.y)
           const width = Math.abs(endPixel.x - startPixel.x)
           const height = Math.abs(endPixel.y - startPixel.y)
-          
+
           currentRedaction.style.left = left + 'px'
           currentRedaction.style.top = top + 'px'
           currentRedaction.style.width = width + 'px'
@@ -148,13 +146,13 @@ export default function DocumentViewer({
       osdViewer.addHandler('canvas-release', (event: any) => {
         if (redactionMode && isDrawing && drawStart && currentRedaction) {
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
-          
+
           // Calculate redaction coordinates in normalized space (0-1)
           const x_start = Math.min(drawStart.x, viewportPoint.x)
           const y_start = Math.min(drawStart.y, viewportPoint.y)
           const x_end = Math.max(drawStart.x, viewportPoint.x)
           const y_end = Math.max(drawStart.y, viewportPoint.y)
-          
+
           // Only create redaction if it has meaningful size
           if (Math.abs(x_end - x_start) > 0.01 && Math.abs(y_end - y_start) > 0.01) {
             onRedactionCreate?.({
@@ -166,7 +164,7 @@ export default function DocumentViewer({
               reason: 'User redaction'
             })
           }
-          
+
           // Clean up
           currentRedaction.remove()
           setCurrentRedaction(null)

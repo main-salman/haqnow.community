@@ -190,7 +190,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 50})
 
-        # Generate thumbnails for each page
+        # Generate thumbnails and high-res previews for each page
         total_pages = len(pages)
         for i, (page_num, page_image) in enumerate(pages):
             thumbnail = generate_thumbnail(page_image, max_size=(200, 300))
@@ -209,6 +209,18 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
                 with open(local_path, "wb") as f:
                     f.write(thumbnail)
                 print(f"Stored thumbnail locally: {local_path}")
+
+            # Also persist a full-quality preview (PNG) for 300 DPI viewing
+            try:
+                import os
+
+                preview_dir = f"/srv/processed/previews/{document_id}"
+                os.makedirs(preview_dir, exist_ok=True)
+                preview_path = f"{preview_dir}/page_{page_num}.png"
+                with open(preview_path, "wb") as f:
+                    f.write(page_image)
+            except Exception as e:
+                print(f"Failed to store preview image: {e}")
 
             # Update progress
             progress = 50 + (50 * (i + 1) // total_pages)

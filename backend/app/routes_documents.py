@@ -394,7 +394,14 @@ async def get_document_thumbnail(
 
     from fastapi.responses import Response
 
-    # Try to serve actual processed thumbnail
+    # Try to serve high-res preview first (PNG at 300 dpi)
+    preview_path = f"/srv/processed/previews/{document_id}/page_{page_number}.png"
+    if os.path.exists(preview_path):
+        with open(preview_path, "rb") as f:
+            preview_data = f.read()
+        return Response(content=preview_data, media_type="image/png")
+
+    # Fallback to webp thumbnail
     local_path = f"/srv/processed/thumbnails/{document_id}/page_{page_number}.webp"
     if os.path.exists(local_path):
         with open(local_path, "rb") as f:
