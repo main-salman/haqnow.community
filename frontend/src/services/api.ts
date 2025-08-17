@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from './auth'
 
 export interface Document {
   id: number
@@ -15,6 +16,31 @@ export interface Document {
   created_at: string
   updated_at: string
 }
+
+// Inject auth token on every request and handle 401 globally
+axios.interceptors.request.use((config) => {
+  try {
+    const token = useAuthStore.getState().token
+    if (token) {
+      config.headers = config.headers || {}
+      ;(config.headers as any)['Authorization'] = `Bearer ${token}`
+    }
+  } catch {}
+  return config
+})
+
+axios.interceptors.response.use(
+  (resp) => resp,
+  (error) => {
+    if (error?.response?.status === 401) {
+      try { useAuthStore.getState().logout() } catch {}
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
 
 export interface ProcessingJob {
   id: number

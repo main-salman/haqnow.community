@@ -91,9 +91,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # WebSocket support for real-time features
-    location /ws/ {
-        proxy_pass http://localhost:8000;
+    # Socket.IO proxy (FastAPI mounts at /socket.io)
+    location /socket.io/ {
+        proxy_pass http://localhost:8000/socket.io/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
