@@ -177,7 +177,8 @@ export default function DocumentViewerPage() {
 	}, [documentId])
 
 	useEffect(() => {
-		// render markers overlay
+		// render markers overlay (guard for SSR/slow mount)
+		if (typeof document === 'undefined') return
 		const container = document.querySelector('[data-testid="viewer-container"]') as HTMLDivElement | null
 		if (!container) return
 		// create layer if not exists

@@ -182,6 +182,13 @@ export default function DocumentViewer({
 
     setViewer(osdViewer)
 
+    // Fallback: if image fails to load, render a simple placeholder to avoid blank page
+    osdViewer.addHandler('open-failed', () => {
+      if (viewerRef.current) {
+        viewerRef.current.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666">Unable to load page preview.</div>'
+      }
+    })
+
     return () => {
       if (osdViewer) {
         osdViewer.destroy()
