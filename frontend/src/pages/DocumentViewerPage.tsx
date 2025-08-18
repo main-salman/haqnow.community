@@ -28,6 +28,7 @@ export default function DocumentViewerPage() {
 	const [currentPage, setCurrentPage] = useState(0)
 	const [showSidebar, setShowSidebar] = useState(true)
 	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'ai' | 'sharing'>('info')
+	const [mode, setMode] = useState<'view' | 'comment' | 'redact'>('view')
 	const [aiQuestion, setAiQuestion] = useState('')
 	const [newComment, setNewComment] = useState('')
 	const [aiAnswer, setAiAnswer] = useState('')
@@ -212,6 +213,7 @@ export default function DocumentViewerPage() {
 	}, [liveComments, currentPage])
 
 	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
+		if (mode !== 'comment') return
 		setNewComment((prev) => prev || 'New comment')
 		handleAddComment(x, y, page)
 		// emit live comment marker to others
@@ -298,6 +300,22 @@ export default function DocumentViewerPage() {
 						</div>
 					</div>
 					<div className="flex items-center space-x-2">
+						<button
+							onClick={() => setMode(mode === 'redact' ? 'view' : 'redact')}
+							title="Redact mode"
+							className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center ${mode==='redact'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+						>
+							<Edit3 className="h-4 w-4" />
+							<span className="ml-2 hidden sm:inline">Redact</span>
+						</button>
+						<button
+							onClick={() => setMode(mode === 'comment' ? 'view' : 'comment')}
+							title="Comment mode"
+							className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center ${mode==='comment'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+						>
+							<MessageSquare className="h-4 w-4" />
+							<span className="ml-2 hidden sm:inline">Comment</span>
+						</button>
 						<button
 							onClick={handleShare}
 							title="Share document link"
