@@ -1,13 +1,12 @@
 version: "3.9"
 services:
   api:
-    image: python:3.11-slim
-    working_dir: /srv
-    command: bash -lc "apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng libtesseract-dev && pip install poetry && cd backend && poetry install && mkdir -p uploads && poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile.deploy
+    image: haqnow/api:latest
     ports:
       - "8000:8000"
-    volumes:
-      - ..:/srv:cached
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
@@ -16,16 +15,23 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
       - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     depends_on:
-      - redis
-      - ollama
+      redis:
+        condition: service_started
+      ollama:
+        condition: service_started
 
   worker:
-    image: python:3.11-slim
-    working_dir: /srv
-    command: bash -lc "apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng libtesseract-dev && pip install poetry && cd backend && poetry install && mkdir -p uploads && poetry run celery -A app.celery_app worker --loglevel=info"
-    volumes:
-      - ..:/srv:cached
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile.deploy
+    image: haqnow/worker:latest
+    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
@@ -35,8 +41,10 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
       - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
     depends_on:
-      - redis
-      - ollama
+      redis:
+        condition: service_started
+      ollama:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
@@ -44,17 +52,20 @@ services:
       - "6379:6379"
 
   frontend:
-    image: node:18-alpine
-    working_dir: /srv/frontend
-    command: sh -c "npm install --include=dev && npm run build && npm run preview -- --host 0.0.0.0 --port 3000"
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile.deploy
+    image: haqnow/frontend:latest
     ports:
-      - "3000:3000"
-    volumes:
-      - ../frontend:/srv/frontend:cached
-    environment:
-      - NODE_ENV=production
+      - "3000:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   ollama:
     image: ollama/ollama:latest
