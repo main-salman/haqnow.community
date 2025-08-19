@@ -16,7 +16,7 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
       - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health').getcode()==200 else sys.exit(1)\""]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -59,7 +59,7 @@ services:
     ports:
       - "3000:80"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/ > /dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
