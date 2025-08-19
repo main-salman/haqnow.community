@@ -107,11 +107,12 @@ def startup_migrate():
 
     db = SessionLocal()
     try:
-        any_user = db.query(User).first()
-        if not any_user:
-            admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
-            admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
-            admin = User(
+        admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
+        admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
+        existing = db.query(User).filter(User.email == admin_email).first()
+        if not existing:
+            # Create admin if doesn't exist
+            user = User(
                 email=admin_email,
                 full_name="Admin",
                 role="admin",
@@ -119,8 +120,22 @@ def startup_migrate():
                 is_active=True,
                 registration_status="approved",
             )
-            db.add(admin)
+            db.add(user)
             db.commit()
+        else:
+            # Ensure role/active/registration flags are correct
+            changed = False
+            if existing.role != "admin":
+                existing.role = "admin"
+                changed = True
+            if not existing.is_active:
+                existing.is_active = True
+                changed = True
+            if getattr(existing, "registration_status", "approved") != "approved":
+                existing.registration_status = "approved"
+                changed = True
+            if changed:
+                db.commit()
     finally:
         db.close()
 

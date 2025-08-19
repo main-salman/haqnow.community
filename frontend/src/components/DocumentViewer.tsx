@@ -63,6 +63,8 @@ export default function DocumentViewer({
   className,
   redactionMode = false,
   onRedactionCreate,
+  onRedactionUpdate,
+  onRedactionDelete,
   onAddCommentAt,
   redactions = [],
   comments = []
