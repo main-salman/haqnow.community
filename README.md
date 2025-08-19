@@ -2,6 +2,64 @@
 
 A community document platform backend built with FastAPI, SQLAlchemy, and modern Python technologies.
 
+## Architecture Quick Map (for humans and tools)
+
+Use this section to quickly locate code without scanning the whole repo.
+
+- Backend API (FastAPI): `backend/app/`
+  - App entry: `backend/app/main.py`
+  - Data models: `backend/app/models.py`
+  - Schemas/validation: `backend/app/schemas.py`
+  - Security/auth: `backend/app/security.py`, `backend/app/routes_auth.py`
+  - Documents: `backend/app/routes_documents.py`, `backend/app/processing.py`, `backend/app/tasks.py`, `backend/app/s3_client.py`
+  - Search/RAG: `backend/app/routes_search.py`, `backend/app/rag.py`
+  - Config/DB: `backend/app/config.py`, `backend/app/db.py`, `backend/app/celery_app.py`
+  - Tests: `backend/tests/`
+- Frontend (Vite + React + TS): `frontend/src/`
+  - App bootstrap: `frontend/src/main.tsx`, `frontend/src/App.tsx`
+  - Pages: `frontend/src/pages/*.tsx`
+  - Components: `frontend/src/components/*.tsx`
+  - API layer: `frontend/src/services/api.ts`, `frontend/src/services/auth.ts`
+  - Styles: `frontend/src/index.css`, `frontend/tailwind.config.js`
+- Deployment & Ops
+  - Local dev orchestration: `start-local.sh`, `stop-local.sh`
+  - Docker compose (server deploy): `deploy/docker-compose.yml`, `deploy/haqnow-community.nginx`
+  - Server deploy script: `deploy-to-server.sh`
+  - Infra as code: `infra/terraform/` (modules + environments)
+- Storage and data
+  - Local uploads: `backend/uploads/`
+  - Local vector/db assets: `backend/chroma_db/` (binary data; do not scan)
+
+See `architecture.txt` for a deeper end-to-end system description.
+
+## Common Files and Tasks Map
+
+This map lists frequent tasks and the primary files to touch. Prefer these files before exploring widely.
+
+- Authentication/MFA/JWT
+  - Backend: `backend/app/security.py`, `backend/app/routes_auth.py`, `backend/app/schemas.py`
+  - Frontend: `frontend/src/services/auth.ts`, `frontend/src/pages/LoginPage.tsx`, `frontend/src/components/MfaSetup.tsx`
+  - Tests: `backend/tests/test_auth.py`, `backend/tests/test_api_keys.py`
+- Document upload, processing, and viewing
+  - Backend: `backend/app/routes_documents.py`, `backend/app/processing.py`, `backend/app/tasks.py`, `backend/app/s3_client.py`, `backend/app/export.py`, `backend/app/redaction.py`
+  - Frontend: `frontend/src/components/DocumentUpload.tsx`, `frontend/src/pages/DocumentsPage.tsx`, `frontend/src/pages/DocumentViewerPage.tsx`, `frontend/src/components/DocumentViewer.tsx`
+  - Tests: `backend/tests/test_documents.py`, `backend/tests/test_processing.py`, `backend/tests/test_processing_integration.py`, `backend/tests/test_comprehensive_document_management.py`
+- Search and RAG
+  - Backend: `backend/app/routes_search.py`, `backend/app/rag.py`
+  - Frontend: search UI elements live in `frontend/src/pages/DashboardPage.tsx` (and related components)
+  - Tests: covered in integration suites where applicable
+- API integration layer (frontend↔backend)
+  - Frontend: `frontend/src/services/api.ts`
+  - Shared types/interfaces: colocated within frontend `services/` and `pages/`
+- Configuration & environment
+  - Backend settings: `backend/app/config.py`, `.env`
+  - Local dev scripts: `start-local.sh`, `stop-local.sh`
+  - Deployment: `deploy-to-server.sh`, `deploy/docker-compose.yml`
+- Database/ORM
+  - Models and migrations starting point: `backend/app/models.py` (alembic config not included in this repo snapshot)
+
+When adding features, add or update tests in `backend/tests/` alongside the feature area.
+
 ## Architecture
 
 The platform follows a modular architecture with clear separation of concerns:
@@ -36,6 +94,12 @@ The platform follows a modular architecture with clear separation of concerns:
 - Document metadata management
 - Access control and permissions
 - Background processing for document analysis
+ - Pixel-level comments and redactions
+   - Comments: anchored to page and pixel coordinates (image space)
+   - Redactions: rectangle overlays in image pixels (300 DPI), black only
+   - Real-time sync for comments/redactions via Socket.IO
+   - Redaction lock: first editor wins; others see a notice
+   - Export burn-in: redactions are burned into exported PDFs/images at 300 DPI for immutability
 
 ## Technology Stack
 
@@ -74,6 +138,10 @@ haqnow.community/
 ├── deploy/                # Deployment configurations
 └── docs/                  # Documentation
 ```
+
+### Cursor/tooling note
+- Tools should prefer the "Architecture Quick Map" and "Common Files and Tasks Map" above to scope searches narrowly.
+- Avoid scanning binary directories like `backend/chroma_db/`, `backend/uploads/`, and large PDFs in repo root unless explicitly relevant.
 
 ## Development Setup
 
@@ -145,6 +213,25 @@ cd backend
 poetry run pytest
 ```
 
+To run only redaction pixel tests:
+```bash
+cd backend
+poetry run pytest tests/test_redaction_pixels.py -q
+```
+
+Playwright E2E (optional, requires Playwright installed):
+```bash
+cd backend
+poetry run pytest tests/test_playwright_redactions_comments.py -q
+```
+
+Frontend build (type check):
+```bash
+cd frontend
+npm install
+npm run build
+```
+
 ### Running with Docker
 
 ```bash
@@ -156,6 +243,16 @@ docker-compose -f deploy/docker-compose.yml up
 Once the server is running, visit:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
+
+### Key Endpoints (documents)
+- `POST /documents/{id}/comments` — add comment with `{ page_number, x_position, y_position, content }`
+- `PUT /documents/{id}/comments/{comment_id}` — update comment pixel position/content
+- `DELETE /documents/{id}/comments/{comment_id}` — delete comment (hard delete)
+- `POST /documents/{id}/redactions` — add redaction `{ page_number, x_start, y_start, x_end, y_end, reason? }`
+- `PUT /documents/{id}/redactions/{redaction_id}` — move/resize (pixel values)
+- `DELETE /documents/{id}/redactions/{redaction_id}` — delete redaction
+- `POST /documents/{id}/pages/{page}/redact` — burn-in page redactions
+- `POST /documents/{id}/export` — export PDF/images with `include_redacted=true` to burn-in
 
 ## Environment Configuration
 

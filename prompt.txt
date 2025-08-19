@@ -29,3 +29,59 @@ This app must have these common Document Management System features:
 - Document Capture & Import - Easy uploading from computers, scanners, camera.
 - Workflow Automation - Route documents for review, approval, and notifications without manual tracking.
 - Collaboration - Comments, annotations, co-authoring, and secure sharing.
+
+Comment and Redaction features:
+Comment features:
+- when you click on Comment Button, you should be able to click on anywhere in the document
+- a comment icon should appear in that place in that document
+- user should be able to put in text relating to that comment
+- user should be able to delete the comment which should make the comment icon disappear
+- user should be able to edit the comment
+- multiple users should be able to edit comments (whomever the document is shared with)
+
+Redact features:
+- when user clicks on the redact button, user should be able to create a square anywhere in the Document should be create a black filled in square
+- user should be able to make multiple black squares until they click on redact again which would toggle being able to make the black squares
+- users should be able to click on the black squarea and move them
+- users should be able to click on the black squares and a delete or rezize options should also appear
+- when user exports a document, the black squares should be burned into the document to make sure nothing underneath them is visible
+
+
+
+Got it. Before proceeding, here are 20 focused questions to lock down the spec and avoid rework:
+
+### Scope and viewer behavior
+1) What document types must support comments/redactions now (PDF only, images, others)?
+2) What viewer library are we using (e.g., PDF.js) and are pages rendered via canvas, SVG, or DOM?
+3) Should coordinates be stored as page-relative percentages (recommended) or absolute pixels at a specific zoom?
+
+### Comment model and UX
+4) Are comments always tied to a specific page and a point on that page, or can they be global?
+5) Do you want single comments only, or threads (replies), with resolve/close status?
+6) Should comments support mentions (@user), and if so, what user search API exists?
+7) What’s the exact delete/edit behavior: hard delete vs soft delete; edit history needed?
+8) Who can see comments: all users with access to the doc, or only explicit collaborators/roles?
+
+### Redaction behavior
+9) Do we support rectangle redactions only, or also text-selection redaction?
+10) Should redactions be fully opaque black boxes only, or configurable (color/opacity/border)?
+11) Should redactions be toggle-visible in the viewer (show/hide overlays) separate from the exported burn-in?
+12) Who can create/move/delete redactions (all collaborators vs specific roles)?
+
+### Collaboration and persistence
+13) Do you need real-time sync (live updates via WebSocket) for comments/redactions, or is save-on-action with polling acceptable?
+14) What backend endpoints or schemas already exist for storing comments/redactions? If none, should we design them?
+15) How should conflicts be handled if two users edit/move/delete the same item simultaneously (last-write-wins, optimistic concurrency, locks)?
+
+### Export and versioning
+16) Where should burn-in occur: client-side only, server-side only, or both (preferred: server-side authoritative PDF flattening)?
+17) Should exports create immutable redacted versions while keeping the original unredacted file, with version history/audit log?
+18) Do you require an audit trail (who created/edited/deleted comments/redactions and when)?
+
+### Edge cases and UX polish
+19) How should comments/redactions behave with zoom and page rotation (must they stay anchored and scale/rotate with the page)?
+20) What are the minimum acceptance criteria for tests (e2e for placement/move/delete, export fidelity, multi-user edits), and do you have sample docs to use in CI?
+
+Reply with answers (even brief bullets are fine), and I’ll implement accordingly.
+
+1. all documents - they are all turned into tiles/images anyways - they should all work equally well 2. I don't know 3. whatever is most accurate - forget about different zoom level - just use one image per page only regardless of zoom level - that page should always be 300 dpi - and do the redaction at the pixel level - then there would be no need to worry about percentages or zoom levels 3. always tied at the pixel level in the document 4. they should be tied to a specific pixel in the document 5. single comment to start - may hadd threads later 6. no mentions 7. hard delete - no history 8. all users with access to the doc 9. rectangle redaction only 10. black only 11. yes 12. all collaborators 13. real-time sync for both comments and redactions 14. I don't know - please check 15. whoever starts editing first gets control 16. burn-in should occur when exporting documents to pdf 17. yes - exports should be immutable redacted versions 18. no 19. they should be tied to the document at the pixel level - so rotation of document should rotate the redation too 20. use @Ministry of Health _ ontario.ca.pdf and @Public Health - Region of Durham.pdf as test documents

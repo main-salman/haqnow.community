@@ -40,6 +40,39 @@ from .tasks import (
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+def _user_can_edit_document(db: Session, document_id: int, current_user) -> bool:
+    """Check whether current_user has edit-level access to document."""
+    from .models import DocumentShare
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        return False
+    if document.uploader_id == getattr(current_user, "id", None):
+        return True
+    if getattr(current_user, "role", "") in ["admin", "manager"]:
+        return True
+    # Check shares
+    user_share = (
+        db.query(DocumentShare)
+        .filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.shared_with_email == current_user.email,
+            DocumentShare.permission_level == "edit",
+        )
+        .first()
+    )
+    everyone_share = (
+        db.query(DocumentShare)
+        .filter(
+            DocumentShare.document_id == document_id,
+            DocumentShare.is_everyone == True,
+            DocumentShare.permission_level == "edit",
+        )
+        .first()
+    )
+    return bool(user_share or everyone_share)
+
+
 @router.post("/presigned-upload", response_model=PresignedUploadResponse)
 def create_presigned_upload(payload: PresignedUploadRequest):
     """Generate presigned URL for direct upload to SOS"""
@@ -361,6 +394,36 @@ async def remove_redactions(
     return result
 
 
+@router.delete("/{document_id}/redactions/{redaction_id}")
+async def delete_redaction(
+    document_id: int,
+    redaction_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from .models import Redaction
+
+    red = (
+        db.query(Redaction)
+        .filter(Redaction.id == redaction_id, Redaction.document_id == document_id)
+        .first()
+    )
+    if not red:
+        raise HTTPException(status_code=404, detail="Redaction not found")
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if (
+        red.user_id != current_user.id
+        and current_user.role not in ["admin", "manager"]
+        and doc.uploader_id != current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    db.delete(red)
+    db.commit()
+    return {"success": True}
+
+
 @router.get("/{document_id}/redactions")
 async def list_redacted_pages(document_id: int, db: Session = Depends(get_db)):
     """List all redacted pages for a document"""
@@ -581,6 +644,46 @@ async def add_comment(
     }
 
 
+@router.put("/{document_id}/comments/{comment_id}")
+async def update_comment(
+    document_id: int,
+    comment_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from .models import Comment
+
+    comment = (
+        db.query(Comment)
+        .filter(Comment.id == comment_id, Comment.document_id == document_id)
+        .first()
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    # Only owner or users with edit rights can update
+    if comment.user_id != current_user.id and not _user_can_edit_document(
+        db, document_id, current_user
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if "content" in payload:
+        comment.content = str(payload["content"])[:2000]
+    if "x_position" in payload:
+        comment.x_position = float(payload["x_position"])
+    if "y_position" in payload:
+        comment.y_position = float(payload["y_position"])
+    db.commit()
+    db.refresh(comment)
+    return {
+        "id": comment.id,
+        "content": comment.content,
+        "page_number": comment.page_number,
+        "x_position": comment.x_position,
+        "y_position": comment.y_position,
+        "updated_at": comment.updated_at.isoformat(),
+    }
+
+
 @router.get("/{document_id}/comments")
 async def get_comments(document_id: int, db: Session = Depends(get_db)):
     """Get all comments for a document"""
@@ -615,6 +718,39 @@ async def get_comments(document_id: int, db: Session = Depends(get_db)):
             for comment, user in comments
         ]
     }
+
+
+@router.delete("/{document_id}/comments/{comment_id}")
+async def delete_comment(
+    document_id: int,
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from .models import Comment
+
+    comment = (
+        db.query(Comment)
+        .filter(Comment.id == comment_id, Comment.document_id == document_id)
+        .first()
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Allow owner, admin, or uploader to delete
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if (
+        comment.user_id != current_user.id
+        and current_user.role not in ["admin", "manager"]
+        and doc.uploader_id != current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    db.delete(comment)
+    db.commit()
+    return {"success": True}
 
 
 @router.post("/{document_id}/redactions")
@@ -657,6 +793,46 @@ async def add_redaction(
         "y_end": redaction.y_end,
         "reason": redaction.reason,
         "created_at": redaction.created_at.isoformat(),
+    }
+
+
+@router.put("/{document_id}/redactions/{redaction_id}")
+async def update_redaction(
+    document_id: int,
+    redaction_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from .models import Redaction
+
+    red = (
+        db.query(Redaction)
+        .filter(Redaction.id == redaction_id, Redaction.document_id == document_id)
+        .first()
+    )
+    if not red:
+        raise HTTPException(status_code=404, detail="Redaction not found")
+    if red.user_id != current_user.id and not _user_can_edit_document(
+        db, document_id, current_user
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    # Update pixel coordinates
+    for key in ["x_start", "y_start", "x_end", "y_end"]:
+        if key in payload:
+            setattr(red, key, float(payload[key]))
+    if "reason" in payload:
+        red.reason = str(payload["reason"])[:500]
+    db.commit()
+    db.refresh(red)
+    return {
+        "id": red.id,
+        "page_number": red.page_number,
+        "x_start": red.x_start,
+        "y_start": red.y_start,
+        "x_end": red.x_end,
+        "y_end": red.y_end,
+        "reason": red.reason,
     }
 
 

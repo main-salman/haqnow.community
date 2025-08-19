@@ -203,7 +203,7 @@ run_test "Search Endpoint" "test_api_endpoint '/search/?q=test' '200' 'Search en
 # 5. AUTHENTICATION TESTS
 echo -e "\n${BLUE}5. Authentication Tests${NC}"
 run_test "User Creation API" "test_api_endpoint '/auth/admin/users' '401' 'User creation endpoint requires auth'"
-run_test "Login API" "resp=\$(curl -s -w '%{http_code}' -o /dev/null -X POST 'http://localhost:8000/auth/login' -H 'Content-Type: application/json' -d '{}'); [ \"$resp\" = '422' ]"
+run_test "Login API" "test \"\$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://localhost:8000/auth/login' -H 'Content-Type: application/json' -d '{}')\" = '422'"
 run_test "API Key Management" "test_api_endpoint '/auth/admin/api-keys' '401' 'API key management endpoint requires auth'"
 
 # 6. DOCUMENT SHARING TESTS
@@ -321,8 +321,7 @@ run_test "Frontend Load Time" "
 echo -e "\n${BLUE}13. Security Tests${NC}"
 
 run_test "CORS Headers" "
-    response=$(curl -s -i -H 'Origin: http://localhost:3000' 'http://localhost:8000/health')
-    echo "$response" | grep -i 'access-control-allow-origin'
+    curl -s -i -H 'Origin: http://localhost:3000' 'http://localhost:8000/health' | grep -iq 'access-control-allow-origin'
 "
 
 run_test "Authentication Required: Admin Users" "test_api_endpoint '/auth/admin/users' '401' 'Admin users requires auth'"

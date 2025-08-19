@@ -122,3 +122,36 @@ To set up the development environment with these rules:
 5. Ensure all tests pass before pushing
 
 Remember: Quality over speed. It's better to deliver fewer, well-tested features than many buggy ones.
+
+## Cursor Token Budget Optimization
+
+To minimize tokens, scope searches narrowly and use the README quick maps as your first stop.
+
+- Primary references
+  - Use `README.md` → sections "Architecture Quick Map" and "Common Files and Tasks Map" to determine EXACT files/dirs to inspect before scanning broadly.
+  - Use `architecture.txt` only for deep design context; do not read it unless necessary.
+
+- Directory scoping defaults
+  - Backend focus: prefer `backend/app/` or specific files inside it (e.g., `backend/app/routes_documents.py`, `backend/app/security.py`).
+  - Frontend focus: prefer `frontend/src/` or specific files inside it (e.g., `frontend/src/services/api.ts`, `frontend/src/pages/`).
+  - Tests: prefer `backend/tests/` when validating behavior.
+
+- Avoid scanning these unless explicitly required
+  - `backend/chroma_db/` (binary/vector index data)
+  - `backend/uploads/` (user/local files)
+  - Large assets in repo root (e.g., PDFs, images)
+  - `frontend/public/` for code searches
+  - Dependency locks and build artifacts (`poetry.lock`, `package-lock.json`, `dist/`, `node_modules/`)
+
+- Search heuristics
+  - Start with semantic search scoped to a single directory from the quick maps. Only widen after two misses.
+  - Use exact-text search only for symbols or file names you already know (e.g., `routes_documents.py`).
+  - Limit parallel searches to 3–5 targeted queries, each with a concrete question ("Where is X validated?", not just a keyword).
+  - Prefer reading individual files called out in README over listing directories.
+  - When reading large files, read only the needed sections; avoid full-file reads unless necessary.
+
+- Operational notes
+  - Use absolute paths where possible.
+  - Skip binary/non-text files.
+  - When proposing code edits, touch only the files named in README quick maps unless the change requires broader refactors.
+  - After any edit, run only the relevant tests (see `backend/tests/` mapping in README) before broader runs.

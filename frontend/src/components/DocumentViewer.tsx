@@ -27,7 +27,32 @@ interface DocumentViewerProps {
     y_end: number
     reason?: string
   }) => void
+  onRedactionUpdate?: (redaction: {
+    id: number
+    page_number: number
+    x_start: number
+    y_start: number
+    x_end: number
+    y_end: number
+    reason?: string
+  }) => void
+  onRedactionDelete?: (redactionId: number) => void
   onAddCommentAt?: (x: number, y: number, page: number) => void
+  redactions?: Array<{
+    id?: number
+    page_number: number
+    x_start: number
+    y_start: number
+    x_end: number
+    y_end: number
+  }>
+  comments?: Array<{
+    id?: number
+    page_number: number
+    x_position: number
+    y_position: number
+    content?: string
+  }>
 }
 
 export default function DocumentViewer({
@@ -38,7 +63,9 @@ export default function DocumentViewer({
   className,
   redactionMode = false,
   onRedactionCreate,
-  onAddCommentAt
+  onAddCommentAt,
+  redactions = [],
+  comments = []
 }: DocumentViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null)
@@ -48,6 +75,9 @@ export default function DocumentViewer({
   const [isDrawing, setIsDrawing] = useState(false)
   const [drawStart, setDrawStart] = useState<{x: number, y: number} | null>(null)
   const [currentRedaction, setCurrentRedaction] = useState<HTMLDivElement | null>(null)
+  const overlaysRef = useRef<{ type: 'redaction' | 'comment'; el: HTMLElement }[]>([])
+  const draggingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
+  const resizingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
 
   useEffect(() => {
     if (!viewerRef.current) return
@@ -92,26 +122,27 @@ export default function DocumentViewer({
     osdViewer.addHandler('canvas-click', (event: any) => {
       if (redactionMode) return
       if (!onAddCommentAt) return
-      const vp = osdViewer.viewport.pointFromPixel(event.position)
-      onAddCommentAt(vp.x, vp.y, pageNumber)
+      const item = osdViewer.world.getItemAt(0)
+      if (!item) return
+      const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
+      const imgPoint = item.viewportToImageCoordinates(vpPoint)
+      onAddCommentAt(imgPoint.x, imgPoint.y, pageNumber)
     })
 
-    // Add overlay for annotations and redactions
+    // Add overlay for annotations and redactions when image opens
     osdViewer.addHandler('open', () => {
-      if (showAnnotations) {
-        // could render annotations later
-      }
-      if (showRedactions) {
-        // could render redactions later
-      }
+      // handled by effect below which reacts to dependencies
     })
 
     // Add redaction drawing handlers
     if (redactionMode) {
       osdViewer.addHandler('canvas-press', (event: any) => {
         if (redactionMode && !isDrawing) {
+          const item = osdViewer.world.getItemAt(0)
+          if (!item) return
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
-          setDrawStart({x: viewportPoint.x, y: viewportPoint.y})
+          const imagePoint = item.viewportToImageCoordinates(viewportPoint)
+          setDrawStart({x: imagePoint.x, y: imagePoint.y})
           setIsDrawing(true)
 
           // Create visual redaction rectangle
@@ -135,8 +166,11 @@ export default function DocumentViewer({
 
       osdViewer.addHandler('canvas-drag', (event: any) => {
         if (redactionMode && isDrawing && drawStart && currentRedaction) {
+          const item = osdViewer.world.getItemAt(0)
+          if (!item) return
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
-          const startPixel = osdViewer.viewport.pixelFromPoint({x: drawStart.x, y: drawStart.y})
+          const startViewportPoint = item.imageToViewportCoordinates(drawStart.x, drawStart.y)
+          const startPixel = osdViewer.viewport.pixelFromPoint(startViewportPoint)
           const endPixel = osdViewer.viewport.pixelFromPoint(viewportPoint)
 
           const left = Math.min(startPixel.x, endPixel.x)
@@ -153,15 +187,18 @@ export default function DocumentViewer({
 
       osdViewer.addHandler('canvas-release', (event: any) => {
         if (redactionMode && isDrawing && drawStart && currentRedaction) {
-          const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
+          const item = osdViewer.world.getItemAt(0)
+          if (!item) return
+          const endViewportPoint = osdViewer.viewport.pointFromPixel(event.position)
+          const endImagePoint = item.viewportToImageCoordinates(endViewportPoint)
 
-          // Calculate redaction coordinates in normalized space (0-1)
-          const x_start = Math.min(drawStart.x, viewportPoint.x)
-          const y_start = Math.min(drawStart.y, viewportPoint.y)
-          const x_end = Math.max(drawStart.x, viewportPoint.x)
-          const y_end = Math.max(drawStart.y, viewportPoint.y)
+          // Calculate redaction coordinates in IMAGE PIXELS
+          const x_start = Math.min(drawStart.x, endImagePoint.x)
+          const y_start = Math.min(drawStart.y, endImagePoint.y)
+          const x_end = Math.max(drawStart.x, endImagePoint.x)
+          const y_end = Math.max(drawStart.y, endImagePoint.y)
 
-          if (Math.abs(x_end - x_start) > 0.01 && Math.abs(y_end - y_start) > 0.01) {
+          if (Math.abs(x_end - x_start) > 2 && Math.abs(y_end - y_start) > 2) {
             onRedactionCreate?.({
               page_number: pageNumber,
               x_start,
@@ -195,6 +232,204 @@ export default function DocumentViewer({
       }
     }
   }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode])
+
+  // Render overlays for redactions and comments
+  useEffect(() => {
+    if (!viewer) return
+
+    // Clear previous overlays
+    overlaysRef.current.forEach(({ el }) => {
+      try { viewer.removeOverlay(el) } catch {}
+    })
+    overlaysRef.current = []
+
+    const item = viewer.world.getItemAt(0)
+    if (!item) return
+
+    // Redaction overlays
+    if (showRedactions) {
+      redactions
+        .filter(r => r.page_number === pageNumber)
+        .forEach((r) => {
+          const el = document.createElement('div')
+          el.style.background = 'rgba(0,0,0,0.85)'
+          el.style.border = '1px solid rgba(0,0,0,0.9)'
+          el.style.pointerEvents = 'auto'
+          el.style.cursor = 'move'
+          el.style.position = 'relative'
+          const xRaw = Math.min(r.x_start, r.x_end)
+          const yRaw = Math.min(r.y_start, r.y_end)
+          const wRaw = Math.abs(r.x_end - r.x_start)
+          const hRaw = Math.abs(r.y_end - r.y_start)
+          let rect: OpenSeadragon.Rect
+          const isPixel = xRaw > 1 || yRaw > 1 || wRaw > 1 || hRaw > 1
+          if (isPixel) {
+            const imageRect = new OpenSeadragon.Rect(xRaw, yRaw, wRaw, hRaw)
+            rect = item.imageToViewportRectangle(imageRect)
+          } else {
+            rect = new OpenSeadragon.Rect(xRaw, yRaw, wRaw, hRaw)
+          }
+          try { viewer.addOverlay({ element: el, location: rect }) } catch {}
+          overlaysRef.current.push({ type: 'redaction', el })
+
+          // Add resize handle (bottom-right)
+          const handle = document.createElement('div')
+          handle.style.position = 'absolute'
+          handle.style.width = '10px'
+          handle.style.height = '10px'
+          handle.style.right = '0'
+          handle.style.bottom = '0'
+          handle.style.background = '#ffffff'
+          handle.style.border = '1px solid #000000'
+          handle.style.cursor = 'nwse-resize'
+          el.appendChild(handle)
+
+          // Add delete toolbar (top-right)
+          const del = document.createElement('button')
+          del.textContent = '×'
+          del.title = 'Delete redaction'
+          del.style.position = 'absolute'
+          del.style.right = '0'
+          del.style.top = '0'
+          del.style.width = '16px'
+          del.style.height = '16px'
+          del.style.background = '#ef4444'
+          del.style.color = 'white'
+          del.style.border = 'none'
+          del.style.cursor = 'pointer'
+          del.style.fontSize = '12px'
+          el.appendChild(del)
+
+          // Drag/resize handlers (image pixel coordinates)
+          const id = (r as any).id as number | undefined
+          const getImageRect = () => ({ x1: xRaw, y1: yRaw, x2: xRaw + wRaw, y2: yRaw + hRaw })
+          el.addEventListener('mousedown', (e) => {
+            if (!id || (e.target as HTMLElement) === handle) return
+            e.preventDefault()
+            const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
+            const imgPt = item.viewportToImageCoordinates(pt)
+            draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
+          })
+          handle.addEventListener('mousedown', (e) => {
+            if (!id) return
+            e.stopPropagation()
+            e.preventDefault()
+            const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
+            const imgPt = item.viewportToImageCoordinates(pt)
+            resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
+          })
+
+          del.addEventListener('click', (e) => {
+            e.stopPropagation()
+            if (!id) return
+            onRedactionDelete?.(id)
+          })
+        })
+    }
+
+    // Comment pin overlays
+    if (showAnnotations) {
+      comments
+        .filter(c => c.page_number === pageNumber)
+        .forEach((c) => {
+          const wrapper = document.createElement('div')
+          wrapper.style.pointerEvents = 'auto'
+
+          const pin = document.createElement('div')
+          pin.style.width = '12px'
+          pin.style.height = '12px'
+          pin.style.borderRadius = '9999px'
+          pin.style.background = '#2563eb'
+          pin.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.35)'
+          pin.style.cursor = 'pointer'
+          pin.title = c.content || 'Comment'
+
+          const bubble = document.createElement('div')
+          bubble.style.position = 'absolute'
+          bubble.style.left = '16px'
+          bubble.style.top = '-4px'
+          bubble.style.transform = 'translateY(-100%)'
+          bubble.style.maxWidth = '240px'
+          bubble.style.background = 'white'
+          bubble.style.border = '1px solid rgba(0,0,0,0.1)'
+          bubble.style.boxShadow = '0 10px 20px rgba(0,0,0,0.08)'
+          bubble.style.borderRadius = '8px'
+          bubble.style.padding = '8px 10px'
+          bubble.style.fontSize = '12px'
+          bubble.style.color = '#111827'
+          bubble.style.display = 'none'
+          bubble.style.zIndex = '1001'
+          bubble.textContent = c.content || 'Comment'
+
+          pin.addEventListener('click', (e) => {
+            e.stopPropagation()
+            bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none'
+          })
+
+          wrapper.appendChild(pin)
+          wrapper.appendChild(bubble)
+
+          const isPixel = c.x_position > 1 || c.y_position > 1
+          let rect: OpenSeadragon.Rect
+          if (isPixel) {
+            const sizePx = 12
+            const imageRect = new OpenSeadragon.Rect(c.x_position - sizePx / 2, c.y_position - sizePx / 2, sizePx, sizePx)
+            rect = item.imageToViewportRectangle(imageRect)
+          } else {
+            const size = 0.012
+            const x = c.x_position - size / 2
+            const y = c.y_position - size / 2
+            rect = new OpenSeadragon.Rect(x, y, size, size)
+          }
+          try { viewer.addOverlay({ element: wrapper, location: rect }) } catch {}
+          overlaysRef.current.push({ type: 'comment', el: wrapper })
+        })
+    }
+  }, [viewer, redactions, comments, pageNumber, showRedactions, showAnnotations])
+
+  // Global mouse handlers for drag/resize
+  useEffect(() => {
+    if (!viewer) return
+    const onMove = (e: MouseEvent) => {
+      const item = viewer.world.getItemAt(0)
+      if (!item) return
+      if (draggingRef.current) {
+        const { id, startX, startY, orig } = draggingRef.current
+        const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
+        const img = item.viewportToImageCoordinates(vp)
+        const dx = img.x - startX
+        const dy = img.y - startY
+        const x1 = orig.x1 + dx
+        const y1 = orig.y1 + dy
+        const x2 = orig.x2 + dx
+        const y2 = orig.y2 + dy
+        onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
+        draggingRef.current = { id, startX, startY, orig }
+      } else if (resizingRef.current) {
+        const { id, startX, startY, orig } = resizingRef.current
+        const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
+        const img = item.viewportToImageCoordinates(vp)
+        const dx = img.x - startX
+        const dy = img.y - startY
+        const x1 = orig.x1
+        const y1 = orig.y1
+        const x2 = Math.max(x1 + 2, orig.x2 + dx)
+        const y2 = Math.max(y1 + 2, orig.y2 + dy)
+        onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
+        resizingRef.current = { id, startX, startY, orig }
+      }
+    }
+    const onUp = () => {
+      draggingRef.current = null
+      resizingRef.current = null
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [viewer, pageNumber, onRedactionUpdate])
 
   const handleZoomIn = () => {
     if (viewer) {
@@ -249,12 +484,13 @@ export default function DocumentViewer({
   return (
     <div className={clsx('relative bg-gray-100 rounded-lg overflow-hidden', className)}>
       {/* Viewer Container */}
-      <div ref={viewerRef} data-testid="viewer-container" className="w-full h-full min-h-[600px]" />
+      <div ref={viewerRef} data-testid="viewer-container" className="document-viewer w-full h-full min-h-[600px]" />
 
       {/* Toolbar */}
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2 flex items-center space-x-2">
         <button
           onClick={handleZoomIn}
+          data-testid="zoom-in"
           className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
           title="Zoom In"
         >
@@ -262,6 +498,7 @@ export default function DocumentViewer({
         </button>
         <button
           onClick={handleZoomOut}
+          data-testid="zoom-out"
           className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
           title="Zoom Out"
         >
@@ -269,6 +506,7 @@ export default function DocumentViewer({
         </button>
         <button
           onClick={handleZoomHome}
+          data-testid="fit-to-screen"
           className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
           title="Fit to Screen"
         >
@@ -276,6 +514,7 @@ export default function DocumentViewer({
         </button>
         <button
           onClick={handleRotate}
+          data-testid="rotate"
           className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
           title="Rotate"
         >
@@ -283,6 +522,7 @@ export default function DocumentViewer({
         </button>
         <button
           onClick={handleFullscreen}
+          data-testid="fullscreen"
           className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
           title="Fullscreen"
         >

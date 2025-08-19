@@ -102,6 +102,10 @@ export const documentsApi = {
   getComments: (id: number) => axios.get(`/api/documents/${id}/comments`),
   addComment: (id: number, commentData: any) =>
     axios.post(`/api/documents/${id}/comments`, commentData),
+  updateComment: (id: number, commentId: number, updateData: any) =>
+    axios.put(`/api/documents/${id}/comments/${commentId}`, updateData),
+  deleteComment: (id: number, commentId: number) =>
+    axios.delete(`/api/documents/${id}/comments/${commentId}`),
   export: (id: number, options: { format: string; pages?: number[] }) =>
     axios.post(`/api/documents/${id}/export`, options),
 
@@ -131,6 +135,15 @@ export const documentsApi = {
     reason?: string;
   }) => axios.post(`/api/documents/${id}/redactions`, redactionData),
   getRedactions: (id: number) => axios.get(`/api/documents/${id}/redactions`),
+  updateRedaction: (id: number, redactionId: number, update: Partial<{ x_start: number; y_start: number; x_end: number; y_end: number; reason: string }>) =>
+    axios.put(`/api/documents/${id}/redactions/${redactionId}`, update),
+  deleteRedaction: (id: number, redactionId: number) =>
+    axios.delete(`/api/documents/${id}/redactions/${redactionId}`),
+  // Apply/Remove page redactions (burn-in)
+  applyPageRedactions: (id: number, pageNumber: number, regions: Array<{ x: number; y: number; width: number; height: number; color?: string }>) =>
+    axios.post(`/api/documents/${id}/pages/${pageNumber}/redact`, { redactions: regions }),
+  removePageRedactions: (id: number, pageNumber: number) =>
+    axios.delete(`/api/documents/${id}/pages/${pageNumber}/redact`),
 }
 
 // Search API

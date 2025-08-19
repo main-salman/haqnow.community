@@ -40,6 +40,9 @@ export default function DocumentViewerPage() {
 	const socketRef = useRef<Socket | null>(null)
 	const markersLayerRef = useRef<HTMLDivElement | null>(null)
 	const [liveComments, setLiveComments] = useState<any[]>([])
+	const [liveRedactions, setLiveRedactions] = useState<any[]>([])
+	const [showPins, setShowPins] = useState(true)
+	const [hasRedactionLock, setHasRedactionLock] = useState(false)
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -59,6 +62,42 @@ export default function DocumentViewerPage() {
 		queryFn: () => documentsApi.getComments(documentId).then(res => res.data.comments || []),
 		enabled: !!documentId,
 	})
+
+	const { data: redactions = [] } = useQuery({
+		queryKey: ['document-redactions', documentId],
+		queryFn: () => documentsApi.getRedactions(documentId).then(res => (res.data.redactions || [])),
+		enabled: !!documentId,
+	})
+
+	const handleUpdateRedaction = async (r: { id?: number; page_number: number; x_start: number; y_start: number; x_end: number; y_end: number; reason?: string }) => {
+		try {
+			if (!r.id) return
+			await documentsApi.updateRedaction(documentId, r.id, {
+				x_start: r.x_start,
+				y_start: r.y_start,
+				x_end: r.x_end,
+				y_end: r.y_end,
+				reason: r.reason,
+			})
+			queryClient.invalidateQueries(['document-redactions', documentId])
+			if (socketRef.current) {
+				socketRef.current.emit('add_redaction', { document_id: documentId, redaction: r })
+			}
+		} catch {}
+	}
+
+	const handleDeleteRedaction = async (redactionId: number) => {
+		try {
+			await documentsApi.deleteRedaction(documentId, redactionId)
+			queryClient.invalidateQueries(['document-redactions', documentId])
+			if (socketRef.current) {
+				socketRef.current.emit('delete_redaction', { document_id: documentId, redaction_id: String(redactionId) })
+			}
+			toast.success('Redaction deleted')
+		} catch (e) {
+			toast.error('Failed to delete redaction')
+		}
+	}
 
 	const { data: shares = [] } = useQuery({
 		queryKey: ['document-shares', documentId],
@@ -113,10 +152,18 @@ export default function DocumentViewerPage() {
 		reason?: string
 	}) => {
 		try {
+			if (!hasRedactionLock && socketRef.current) {
+				toast.error('You do not hold the redaction lock')
+				return
+			}
 			await documentsApi.addRedaction(documentId, redactionData)
 			toast.success('Redaction added successfully')
 			// Refresh redactions
 			queryClient.invalidateQueries(['document-redactions', documentId])
+			// Broadcast to collaborators
+			if (socketRef.current) {
+				socketRef.current.emit('add_redaction', { document_id: documentId, redaction: redactionData })
+			}
 		} catch (error) {
 			toast.error('Failed to add redaction')
 		}
@@ -167,55 +214,75 @@ export default function DocumentViewerPage() {
 		})
 		s.on('document_state', (state: any) => {
 			if (state?.comments) setLiveComments(state.comments)
+			if (state?.redactions) setLiveRedactions(state.redactions)
 		})
 		s.on('comment_added', (payload: any) => {
 			setLiveComments((prev) => [...prev, payload.comment])
 		})
+		s.on('comment_deleted', (payload: any) => {
+			const cid = payload?.comment_id
+			if (!cid) return
+			setLiveComments((prev) => prev.filter((c: any) => String(c.id) !== String(cid)))
+			queryClient.invalidateQueries(['document-comments', documentId])
+		})
+		s.on('redaction_added', (payload: any) => {
+			setLiveRedactions((prev) => [...prev, payload.redaction])
+			queryClient.invalidateQueries(['document-redactions', documentId])
+		})
+		s.on('redaction_deleted', (payload: any) => {
+			const rid = payload?.redaction_id
+			if (!rid) return
+			setLiveRedactions((prev) => prev.filter((r: any) => String(r.id) !== String(rid)))
+			queryClient.invalidateQueries(['document-redactions', documentId])
+		})
+		s.on('redaction_lock_status', (payload: any) => {
+			if (payload?.document_id === documentId) {
+				setHasRedactionLock(!!payload.acquired)
+				if (!payload.acquired) {
+					toast.error('Another user is currently redacting this document')
+					setMode('view')
+				}
+			}
+		})
+		s.on('redaction_lock_released', (payload: any) => {
+			if (payload?.document_id === documentId) {
+				toast.success('Redaction lock released')
+			}
+		})
 		return () => {
+			if (hasRedactionLock) {
+				s.emit('release_redaction_lock', { document_id: documentId })
+			}
 			s.emit('leave_document', { document_id: documentId })
 			s.disconnect()
 		}
 	}, [documentId])
 
 	useEffect(() => {
-		// render markers overlay (guard for SSR/slow mount)
-		if (typeof document === 'undefined') return
-		const container = document.querySelector('[data-testid="viewer-container"]') as HTMLDivElement | null
-		if (!container) return
-		// create layer if not exists
-		if (!markersLayerRef.current) {
-			const layer = document.createElement('div')
-			layer.style.position = 'absolute'
-			layer.style.inset = '0'
-			layer.style.pointerEvents = 'none'
-			container.appendChild(layer)
-			markersLayerRef.current = layer
+		if (!socketRef.current) return
+		if (mode === 'redact') {
+			socketRef.current.emit('acquire_redaction_lock', { document_id: documentId })
+		} else if (hasRedactionLock) {
+			socketRef.current.emit('release_redaction_lock', { document_id: documentId })
+			setHasRedactionLock(false)
 		}
-		const layer = markersLayerRef.current!
-		layer.innerHTML = ''
-		liveComments.forEach((c) => {
-			if (typeof c.x_position === 'number' && typeof c.y_position === 'number' && c.page_number === currentPage) {
-				const dot = document.createElement('div')
-				dot.title = c.content || 'Comment'
-				dot.style.position = 'absolute'
-				dot.style.width = '10px'
-				dot.style.height = '10px'
-				dot.style.borderRadius = '9999px'
-				dot.style.background = '#2563eb'
-				dot.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.3)'
-				// positions are normalized from viewer
-				dot.style.left = `${c.x_position * 100}%`
-				dot.style.top = `${c.y_position * 100}%`
-				dot.style.transform = 'translate(-50%, -50%)'
-				layer.appendChild(dot)
-			}
-		})
-	}, [liveComments, currentPage])
+	}, [mode])
+
+	// overlays are now rendered by DocumentViewer via OpenSeadragon overlays
 
 	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
 		if (mode !== 'comment') return
-		setNewComment((prev) => prev || 'New comment')
-		handleAddComment(x, y, page)
+		const defaultText = newComment.trim() ? newComment : 'New comment'
+		setNewComment('')
+		documentsApi.addComment(documentId, {
+			content: defaultText,
+			page_number: page,
+			x_position: x,
+			y_position: y,
+		}).then(() => {
+			toast.success('Comment added')
+			queryClient.invalidateQueries(['document-comments', documentId])
+		}).catch(() => toast.error('Failed to add comment'))
 		// emit live comment marker to others
 		if (socketRef.current) {
 			socketRef.current.emit('add_comment', {
@@ -372,6 +439,10 @@ export default function DocumentViewerPage() {
 						redactionMode={redactionMode}
 						onRedactionCreate={handleCreateRedaction}
 						onAddCommentAt={handleViewerClickAddComment}
+						redactions={Array.isArray(liveRedactions) && liveRedactions.length ? liveRedactions : redactions}
+						comments={showPins ? (Array.isArray(liveComments) && liveComments.length ? liveComments : comments) : []}
+						onRedactionUpdate={handleUpdateRedaction}
+						onRedactionDelete={handleDeleteRedaction}
 					/>
 				</div>
 
@@ -454,9 +525,28 @@ export default function DocumentViewerPage() {
 									) : (
 										<div className="space-y-2">
 											{comments.map((comment: any, index: number) => (
-												<div key={index} className="p-3 bg-gray-50 rounded-lg">
-													<p className="text-sm text-gray-700">{comment.content}</p>
-													<p className="text-xs text-gray-500 mt-1">{comment.created_at}</p>
+												<div key={index} className="p-3 bg-gray-50 rounded-lg flex items-start justify-between gap-2">
+													<div>
+														<p className="text-sm text-gray-700">{comment.content}</p>
+														<p className="text-xs text-gray-500 mt-1">{comment.created_at}</p>
+													</div>
+													<button
+														onClick={async () => {
+															try {
+																await documentsApi.deleteComment(documentId, comment.id)
+																queryClient.invalidateQueries(['document-comments', documentId])
+																if (socketRef.current) {
+																	socketRef.current.emit('delete_comment', { document_id: documentId, comment_id: String(comment.id) })
+																}
+																toast.success('Comment deleted')
+															} catch {
+																toast.error('Failed to delete comment')
+															}
+														}}
+														className="text-xs text-red-600 hover:text-red-800"
+													>
+														Delete
+													</button>
 												</div>
 											))}
 										</div>

@@ -8,6 +8,8 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 from .config import get_settings
+from .db import SessionLocal
+from .models import Redaction
 from .processing import rasterize_pdf_pages
 from .redaction import get_redaction_service
 from .s3_client import get_s3_client, upload_to_s3
@@ -93,9 +95,9 @@ class ExportService:
             if not pages_to_export:
                 return {"success": False, "error": "No valid pages to export"}
 
-            # Set DPI based on quality
+            # Set DPI based on quality. If including redactions, force 300 DPI for pixel accuracy
             dpi_map = {"high": 300, "medium": 200, "low": 150}
-            export_dpi = dpi_map.get(quality, 300)
+            export_dpi = 300 if include_redacted else dpi_map.get(quality, 300)
 
             if export_format == "pdf":
                 result = await self._export_as_pdf(
@@ -149,16 +151,27 @@ class ExportService:
             # Process each page
             for page_num in pages_to_export:
                 try:
+                    # Choose base image
                     if include_redacted and page_num in redacted_pages:
-                        # Use redacted version
                         page_image = await self._get_redacted_page_image(
                             document_id, page_num
                         )
+                        if page_image is None:
+                            page_image = await self._get_original_page_image(
+                                original_data, page_num, dpi
+                            )
                     else:
-                        # Use original version
                         page_image = await self._get_original_page_image(
                             original_data, page_num, dpi
                         )
+
+                    # Paint DB redactions onto the image to guarantee burn-in
+                    if include_redacted and page_image is not None:
+                        regions = self._get_redaction_regions(document_id, page_num)
+                        if regions:
+                            page_image = self._apply_redaction_rectangles_local(
+                                page_image, regions
+                            )
 
                     if page_image:
                         # Convert PIL Image to PDF page
@@ -342,6 +355,61 @@ class ExportService:
         output = io.BytesIO()
         image.save(output, format=format)
         return output.getvalue()
+
+    def _get_redaction_regions(
+        self, document_id: int, page_number: int
+    ) -> List[Dict[str, int]]:
+        """Load redaction rectangles from DB and normalize to x,y,width,height in pixels."""
+        try:
+            db = SessionLocal()
+            reds = (
+                db.query(Redaction)
+                .filter(
+                    Redaction.document_id == document_id,
+                    Redaction.page_number == page_number,
+                )
+                .all()
+            )
+            regions: List[Dict[str, int]] = []
+            for r in reds:
+                x1 = int(min(r.x_start, r.x_end))
+                y1 = int(min(r.y_start, r.y_end))
+                x2 = int(max(r.x_start, r.x_end))
+                y2 = int(max(r.y_start, r.y_end))
+                regions.append(
+                    {
+                        "x": x1,
+                        "y": y1,
+                        "width": max(0, x2 - x1),
+                        "height": max(0, y2 - y1),
+                        "color": "black",
+                    }
+                )
+            return regions
+        except Exception:
+            return []
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    def _apply_redaction_rectangles_local(
+        self, image: Image.Image, redaction_regions: List[Dict[str, Any]]
+    ) -> Image.Image:
+        from PIL import ImageDraw
+
+        redacted = image.copy()
+        draw = ImageDraw.Draw(redacted)
+        for region in redaction_regions:
+            x = int(region.get("x", 0))
+            y = int(region.get("y", 0))
+            w = int(region.get("width", 0))
+            h = int(region.get("height", 0))
+            if w <= 0 or h <= 0:
+                continue
+            draw.rectangle([x, y, x + w, y + h], fill="black")
+        return redacted
 
     async def list_exports(self, document_id: int) -> Dict[str, Any]:
         """List all available exports for a document"""

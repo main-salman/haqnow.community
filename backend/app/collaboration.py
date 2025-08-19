@@ -26,6 +26,8 @@ class CollaborationManager:
         self.comments: Dict[int, List[Dict[str, Any]]] = {}
         self.redactions: Dict[int, List[Dict[str, Any]]] = {}
         self.user_cursors: Dict[int, Dict[str, Dict[str, Any]]] = {}
+        # Track redaction locks by document_id -> sid of locker
+        self.redaction_locks: Dict[int, Optional[str]] = {}
 
     def get_document_state(self, document_id: int) -> Dict[str, Any]:
         """Get the current state of a document"""
@@ -111,6 +113,40 @@ class CollaborationManager:
         ):
             del self.user_cursors[document_id][user_id]
 
+    def acquire_redaction_lock(self, document_id: int, sid: str) -> bool:
+        """Attempt to acquire the redaction lock for a document"""
+        current = self.redaction_locks.get(document_id)
+        if current is None:
+            self.redaction_locks[document_id] = sid
+            return True
+        return current == sid
+
+    def release_redaction_lock(self, document_id: int, sid: str) -> bool:
+        """Release the redaction lock if held by this sid"""
+        current = self.redaction_locks.get(document_id)
+        if current == sid:
+            self.redaction_locks[document_id] = None
+            return True
+        return False
+
+    def remove_comment(self, document_id: int, comment_id: str) -> bool:
+        if document_id not in self.comments:
+            return False
+        before = len(self.comments[document_id])
+        self.comments[document_id] = [
+            c for c in self.comments[document_id] if c.get("id") != comment_id
+        ]
+        return len(self.comments[document_id]) < before
+
+    def remove_redaction(self, document_id: int, redaction_id: str) -> bool:
+        if document_id not in self.redactions:
+            return False
+        before = len(self.redactions[document_id])
+        self.redactions[document_id] = [
+            r for r in self.redactions[document_id] if r.get("id") != redaction_id
+        ]
+        return len(self.redactions[document_id]) < before
+
 
 # Global collaboration manager
 collaboration_manager = CollaborationManager()
@@ -147,6 +183,10 @@ async def disconnect(sid):
                 await leave_document(sid, {"document_id": document_id})
 
         del active_sessions[sid]
+        # Release any redaction locks held by this sid
+        for doc_id, locker in list(collaboration_manager.redaction_locks.items()):
+            if locker == sid:
+                collaboration_manager.redaction_locks[doc_id] = None
 
 
 @sio.event
@@ -321,7 +361,7 @@ async def add_redaction(sid, data):
         {"user_id": session.get("user_id"), "user_name": session.get("user_name")}
     )
 
-    # Add redaction
+    # Add redaction (live overlay only)
     redaction = collaboration_manager.add_redaction(document_id, redaction_data)
 
     # Broadcast to all participants in the document
@@ -335,6 +375,83 @@ async def add_redaction(sid, data):
     logger.info(
         f"Redaction added to document {document_id} by {session.get('user_name')}"
     )
+
+
+@sio.event
+async def delete_comment(sid, data):
+    document_id = data.get("document_id")
+    comment_id = data.get("comment_id")
+    if not document_id or not comment_id:
+        await sio.emit(
+            "error", {"message": "document_id and comment_id are required"}, room=sid
+        )
+        return
+    removed = collaboration_manager.remove_comment(document_id, comment_id)
+    room_name = f"document_{document_id}"
+    if removed:
+        await sio.emit(
+            "comment_deleted",
+            {"document_id": document_id, "comment_id": comment_id},
+            room=room_name,
+        )
+
+
+@sio.event
+async def delete_redaction(sid, data):
+    document_id = data.get("document_id")
+    redaction_id = data.get("redaction_id")
+    if not document_id or not redaction_id:
+        await sio.emit(
+            "error", {"message": "document_id and redaction_id are required"}, room=sid
+        )
+        return
+    removed = collaboration_manager.remove_redaction(document_id, redaction_id)
+    room_name = f"document_{document_id}"
+    if removed:
+        await sio.emit(
+            "redaction_deleted",
+            {"document_id": document_id, "redaction_id": redaction_id},
+            room=room_name,
+        )
+
+
+@sio.event
+async def acquire_redaction_lock(sid, data):
+    """Attempt to acquire document-level redaction lock (first editor wins)"""
+    document_id = data.get("document_id")
+    if not document_id:
+        await sio.emit("error", {"message": "document_id is required"}, room=sid)
+        return
+    ok = collaboration_manager.acquire_redaction_lock(document_id, sid)
+    await sio.emit(
+        "redaction_lock_status",
+        {"document_id": document_id, "acquired": ok},
+        room=sid,
+    )
+    if ok:
+        room_name = f"document_{document_id}"
+        await sio.emit(
+            "redaction_lock_acquired",
+            {"document_id": document_id},
+            room=room_name,
+            skip_sid=sid,
+        )
+
+
+@sio.event
+async def release_redaction_lock(sid, data):
+    """Release document-level redaction lock if held"""
+    document_id = data.get("document_id")
+    if not document_id:
+        return
+    released = collaboration_manager.release_redaction_lock(document_id, sid)
+    if released:
+        room_name = f"document_{document_id}"
+        await sio.emit(
+            "redaction_lock_released",
+            {"document_id": document_id},
+            room=room_name,
+        )
 
 
 @sio.event
