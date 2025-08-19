@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from .db import Base, engine, get_db
+from .db import Base, SessionLocal, engine, get_db
 from .models import ApiKey, User
 from .schemas import (
     ApiKeyCreate,
@@ -94,7 +94,35 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 @router.on_event("startup")
 def startup_migrate():
+    """Create tables and ensure at least one admin user exists.
+
+    In fresh deployments there may be no users. To prevent lock-out,
+    bootstrap a default admin from environment variables:
+      - ADMIN_EMAIL (default: admin@haqnow.com)
+      - ADMIN_PASSWORD (default: changeme123)
+    The bootstrap runs ONLY when there are no users.
+    """
     Base.metadata.create_all(bind=engine)
+    from .models import User
+
+    db = SessionLocal()
+    try:
+        any_user = db.query(User).first()
+        if not any_user:
+            admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
+            admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
+            admin = User(
+                email=admin_email,
+                full_name="Admin",
+                role="admin",
+                password_hash=hash_password(admin_password),
+                is_active=True,
+                registration_status="approved",
+            )
+            db.add(admin)
+            db.commit()
+    finally:
+        db.close()
 
 
 @router.post("/register", response_model=UserOut)
