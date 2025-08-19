@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -28,6 +29,7 @@ export default function LoginPage() {
   const [showRegister, setShowRegister] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const { login, register } = useAuthStore()
+  const navigate = useNavigate()
 
   // Reset MFA state when component mounts
   useEffect(() => {
@@ -70,6 +72,8 @@ export default function LoginPage() {
       } else if (result === true) {
         // Successful login
         setNeedsMfa(false)
+        // Explicitly navigate to dashboard after successful auth
+        navigate('/dashboard', { replace: true })
       }
       // If result is false, login failed (error will be shown by auth store)
     } finally {

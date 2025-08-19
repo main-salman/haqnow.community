@@ -45,7 +45,7 @@ export const useAuthStore = create<AuthState>()(
             if (response.data.access_token) {
               const { access_token } = response.data
 
-              // Set axios default header
+              // Persist Authorization header for this session
               axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
 
               // Get user info (would need to add endpoint)
@@ -74,7 +74,7 @@ export const useAuthStore = create<AuthState>()(
 
             const { access_token } = response.data
 
-            // Set axios default header
+            // Persist Authorization header for this session
             axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
 
             // Get user info (would need to add endpoint)
