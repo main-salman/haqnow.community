@@ -16,14 +16,18 @@ class Settings:
     s3_access_key: str | None = os.getenv("EXOSCALE_S3_ACCESS_KEY")
     s3_secret_key: str | None = os.getenv("EXOSCALE_S3_SECRET_KEY")
     s3_bucket_originals: str = os.getenv("S3_BUCKET_ORIGINALS", "originals")
+    s3_bucket_thumbnails: str = os.getenv("S3_BUCKET_THUMBNAILS", "thumbnails")
+    s3_bucket_tiles: str = os.getenv("S3_BUCKET_TILES", "tiles")
+    s3_bucket_ocr: str = os.getenv("S3_BUCKET_OCR", "ocr")
+    s3_bucket_exports: str = os.getenv("S3_BUCKET_EXPORTS", "exports")
 
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    celery_result_backend: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+    celery_result_backend: str = os.getenv(
+        "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
+    )
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
-

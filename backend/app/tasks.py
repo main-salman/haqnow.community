@@ -114,7 +114,9 @@ def process_document_tiling(self, document_id: int, job_id: int):
             for x, y, tile_data in tiles:
                 tile_key = f"tiles/{document_id}/page_{page_num}/tile_{x}_{y}.webp"
                 try:
-                    upload_to_s3("tiles", tile_key, tile_data, "image/webp")
+                    upload_to_s3(
+                        settings.s3_bucket_tiles, tile_key, tile_data, "image/webp"
+                    )
                 except Exception as e:
                     # Store locally if S3 is not available
                     import os
@@ -124,6 +126,7 @@ def process_document_tiling(self, document_id: int, job_id: int):
                     local_path = f"{local_dir}/tile_{x}_{y}.webp"
                     with open(local_path, "wb") as f:
                         f.write(tile_data)
+                    print(f"Failed to upload tile to SOS: {e}")
                     print(f"Stored tile locally: {local_path}")
 
             # Update progress
@@ -198,7 +201,9 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
             # Upload thumbnail to S3 or store locally
             thumb_key = f"thumbnails/{document_id}/page_{page_num}.webp"
             try:
-                upload_to_s3("thumbnails", thumb_key, thumbnail, "image/webp")
+                upload_to_s3(
+                    settings.s3_bucket_thumbnails, thumb_key, thumbnail, "image/webp"
+                )
             except Exception as e:
                 # Store locally if S3 is not available
                 import os
@@ -208,6 +213,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
                 local_path = f"{local_dir}/page_{page_num}.webp"
                 with open(local_path, "wb") as f:
                     f.write(thumbnail)
+                print(f"Failed to upload thumbnail to SOS: {e}")
                 print(f"Stored thumbnail locally: {local_path}")
 
             # Also persist a full-quality preview (PNG) for 300 DPI viewing
@@ -319,10 +325,13 @@ def process_document_ocr(self, document_id: int, job_id: int):
         ocr_key = f"ocr/{document_id}/text.json"
         try:
             upload_to_s3(
-                "ocr", ocr_key, json.dumps(ocr_result).encode(), "application/json"
+                settings.s3_bucket_ocr,
+                ocr_key,
+                json.dumps(ocr_result).encode(),
+                "application/json",
             )
         except Exception as e:
-            print(f"Failed to upload OCR results: {e}")
+            print(f"Failed to upload OCR results to SOS: {e}")
 
         # Mark as completed
         job.status = "completed"

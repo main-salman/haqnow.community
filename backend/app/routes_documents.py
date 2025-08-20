@@ -554,14 +554,37 @@ async def get_document_thumbnail(
 
     from fastapi.responses import Response
 
-    # Try to serve high-res preview first (PNG at 300 dpi)
+    # Try to serve from SOS first
+    try:
+        from .s3_client import download_from_s3
+
+        settings = get_settings()
+
+        # Try high-res preview from SOS
+        try:
+            preview_key = f"previews/{document_id}/page_{page_number}.png"
+            preview_data = download_from_s3(settings.s3_bucket_thumbnails, preview_key)
+            return Response(content=preview_data, media_type="image/png")
+        except:
+            pass
+
+        # Try thumbnail from SOS
+        try:
+            thumb_key = f"thumbnails/{document_id}/page_{page_number}.webp"
+            thumbnail_data = download_from_s3(settings.s3_bucket_thumbnails, thumb_key)
+            return Response(content=thumbnail_data, media_type="image/webp")
+        except:
+            pass
+    except:
+        pass
+
+    # Fallback to local files (shared volume)
     preview_path = f"/srv/processed/previews/{document_id}/page_{page_number}.png"
     if os.path.exists(preview_path):
         with open(preview_path, "rb") as f:
             preview_data = f.read()
         return Response(content=preview_data, media_type="image/png")
 
-    # Fallback to webp thumbnail
     local_path = f"/srv/processed/thumbnails/{document_id}/page_{page_number}.webp"
     if os.path.exists(local_path):
         with open(local_path, "rb") as f:
