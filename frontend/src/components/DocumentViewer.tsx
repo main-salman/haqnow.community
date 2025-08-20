@@ -41,6 +41,17 @@ function ImageFallbackViewer({
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const imgRef = useRef<HTMLImageElement>(null)
 
+  // Debug logging
+  console.log('🔍 ImageFallbackViewer render:', {
+    documentId,
+    pageNumber,
+    commentMode,
+    redactionMode,
+    commentsCount: comments.length,
+    redactionsCount: redactions.length,
+    imageSize
+  })
+
   return (
     <div className="relative w-full h-full min-h-[600px] bg-white">
       <img
@@ -322,6 +333,17 @@ export default function DocumentViewer({
   const viewerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null)
   const [useImageFallback, setUseImageFallback] = useState(false)
+
+  // Debug logging
+  console.log('🔍 DocumentViewer render:', {
+    documentId,
+    pageNumber,
+    commentMode,
+    redactionMode,
+    useImageFallback,
+    commentsCount: comments.length,
+    redactionsCount: redactions.length
+  })
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showRedactions, setShowRedactions] = useState(true)

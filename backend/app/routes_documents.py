@@ -1123,6 +1123,49 @@ async def reprocess_document(
     return {"message": "Document reprocessing started", "document_id": document_id}
 
 
+@router.get("/{document_id}/debug")
+async def debug_document_data(document_id: int, db: Session = Depends(get_db)):
+    """Debug endpoint to check document data"""
+    from .models import Comment, Redaction
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    comments = db.query(Comment).filter(Comment.document_id == document_id).all()
+    redactions = db.query(Redaction).filter(Redaction.document_id == document_id).all()
+
+    return {
+        "document": {
+            "id": document.id,
+            "title": document.title,
+            "status": document.status,
+        },
+        "comments": [
+            {
+                "id": c.id,
+                "content": c.content,
+                "page_number": c.page_number,
+                "x_position": c.x_position,
+                "y_position": c.y_position,
+            }
+            for c in comments
+        ],
+        "redactions": [
+            {
+                "id": r.id,
+                "page_number": r.page_number,
+                "x_start": r.x_start,
+                "y_start": r.y_start,
+                "x_end": r.x_end,
+                "y_end": r.y_end,
+                "reason": r.reason,
+            }
+            for r in redactions
+        ],
+    }
+
+
 @router.get("/{document_id}/access")
 async def check_document_access(
     document_id: int,

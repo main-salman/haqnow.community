@@ -439,11 +439,17 @@ export default function DocumentViewerPage() {
 						commentMode={mode === 'comment'}
 						onRedactionCreate={handleCreateRedaction}
 						onAddCommentAt={handleViewerClickAddComment}
-						redactions={Array.isArray(liveRedactions) && liveRedactions.length ? liveRedactions : redactions}
-						comments={showPins ? (Array.isArray(liveComments) && liveComments.length ? liveComments : comments) : []}
+						redactions={redactions || []}
+						comments={comments || []}
 						onRedactionUpdate={handleUpdateRedaction}
 						onRedactionDelete={handleDeleteRedaction}
 					/>
+					{/* Debug info */}
+					{process.env.NODE_ENV === 'development' && (
+						<div className="mt-2 p-2 bg-gray-100 text-xs">
+							Mode: {mode} | Comments: {comments?.length || 0} | Redactions: {redactions?.length || 0}
+						</div>
+					)}
 				</div>
 
 				{/* Sidebar */}
