@@ -480,12 +480,12 @@ export default function DocumentViewer({
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
 
-          // Convert PIXEL coordinates to IMAGE coordinates only at the end
+                    // Convert PIXEL coordinates to IMAGE coordinates only at the end
           const startPixel = drawStartRef.current
           const endPixel = event.position
 
-          const startViewport = osdViewer.viewport.pointFromPixel(startPixel)
-          const endViewport = osdViewer.viewport.pointFromPixel(endPixel)
+          const startViewport = osdViewer.viewport.pointFromPixel(new OpenSeadragon.Point(startPixel.x, startPixel.y))
+          const endViewport = osdViewer.viewport.pointFromPixel(new OpenSeadragon.Point(endPixel.x, endPixel.y))
 
           const startImage = item.viewportToImageCoordinates(startViewport)
           const endImage = item.viewportToImageCoordinates(endViewport)
@@ -539,7 +539,11 @@ export default function DocumentViewer({
 
   // Render overlays for redactions and comments
   useEffect(() => {
-    if (!viewer) return
+    console.log('🔍 OSD: Starting overlay rendering effect')
+    if (!viewer) {
+      console.log('🔍 OSD: No viewer, skipping overlays')
+      return
+    }
 
     // Clear previous overlays
     overlaysRef.current.forEach(({ el }) => {
@@ -548,7 +552,12 @@ export default function DocumentViewer({
     overlaysRef.current = []
 
     const item = viewer.world.getItemAt(0)
-    if (!item) return
+    if (!item) {
+      console.log('🔍 OSD: No item in viewer, skipping overlays')
+      return
+    }
+
+    console.log('🔍 OSD: Proceeding with overlay rendering')
 
     // Redaction overlays
     if (showRedactions) {
