@@ -33,7 +33,7 @@ export default function DocumentViewerPage() {
 	const [newComment, setNewComment] = useState('')
 	const [aiAnswer, setAiAnswer] = useState('')
 	const [isLoadingAI, setIsLoadingAI] = useState(false)
-	const [redactionMode, setRedactionMode] = useState(false)
+
 	const [shareEmail, setShareEmail] = useState('')
 	const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
 	const [shareEveryone, setShareEveryone] = useState(false)
@@ -404,18 +404,7 @@ export default function DocumentViewerPage() {
 						>
 							<Trash2 className="h-4 w-4 mr-2" /> Delete
 						</button>
-						<button
-							onClick={() => setRedactionMode(!redactionMode)}
-							title={redactionMode ? "Exit redaction mode" : "Enter redaction mode"}
-							className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center ${
-								redactionMode
-									? 'bg-red-100 text-red-700 hover:bg-red-200'
-									: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-							}`}
-						>
-							<Edit3 className="h-4 w-4" />
-							{redactionMode && <span className="ml-2">Exit Redact</span>}
-						</button>
+
 						<button
 							onClick={() => setShowSidebar(!showSidebar)}
 							title="Toggle sidebar"
@@ -436,7 +425,7 @@ export default function DocumentViewerPage() {
 						onPageChange={setCurrentPage}
 						totalPages={3}
 						className="h-[70vh]"
-						redactionMode={redactionMode}
+						redactionMode={mode === 'redact'}
 						onRedactionCreate={handleCreateRedaction}
 						onAddCommentAt={handleViewerClickAddComment}
 						redactions={Array.isArray(liveRedactions) && liveRedactions.length ? liveRedactions : redactions}
