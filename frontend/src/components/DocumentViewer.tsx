@@ -641,9 +641,14 @@ export default function DocumentViewer({
 
     // Comment pin overlays
     if (showAnnotations) {
-      comments
-        .filter(c => c.page_number === pageNumber)
-        .forEach((c) => {
+      const pageComments = comments.filter(c => c.page_number === pageNumber)
+      console.log('🔍 OSD: Rendering comment pins:', {
+        totalComments: comments.length,
+        pageComments: pageComments.length,
+        pageNumber,
+        showAnnotations
+      })
+      pageComments.forEach((c) => {
           const wrapper = document.createElement('div')
           wrapper.style.pointerEvents = 'auto'
 
@@ -693,7 +698,19 @@ export default function DocumentViewer({
             const y = c.y_position - size / 2
             rect = new OpenSeadragon.Rect(x, y, size, size)
           }
-          try { viewer.addOverlay({ element: wrapper, location: rect }) } catch {}
+          console.log('🔍 OSD: Adding comment overlay:', {
+            commentId: (c as any).id,
+            x: c.x_position,
+            y: c.y_position,
+            isPixel,
+            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+          })
+          try {
+            viewer.addOverlay({ element: wrapper, location: rect })
+            console.log('🔍 OSD: Comment overlay added successfully')
+          } catch (err) {
+            console.error('🔍 OSD: Failed to add comment overlay:', err)
+          }
           overlaysRef.current.push({ type: 'comment', el: wrapper })
         })
     }
