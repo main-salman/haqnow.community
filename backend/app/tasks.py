@@ -45,6 +45,7 @@ def _load_original_file_bytes(settings, document: Document) -> bytes:
     import os
 
     candidate_paths = [
+        f"/app/uploads/{document.title}",  # shared volume path
         f"/srv/backend/uploads/{document.title}",  # container path when running `cd backend`
         f"/srv/uploads/{document.title}",  # alternate mount path
         f"uploads/{document.title}",  # relative path in dev

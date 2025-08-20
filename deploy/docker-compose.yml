@@ -11,6 +11,7 @@ services:
       - ../.env
     volumes:
       - processed_data:/srv/processed
+      - uploads_data:/app/uploads
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
@@ -40,6 +41,7 @@ services:
       - ../.env
     volumes:
       - processed_data:/srv/processed
+      - uploads_data:/app/uploads
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
@@ -96,3 +98,4 @@ services:
 volumes:
   ollama_data:
   processed_data:
+  uploads_data:

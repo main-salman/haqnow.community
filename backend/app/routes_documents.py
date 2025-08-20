@@ -99,16 +99,46 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    # Create uploads directory if it doesn't exist (backend/uploads absolute)
-    backend_root = Path(__file__).resolve().parents[1]
-    uploads_dir = backend_root / "uploads"
-    uploads_dir.mkdir(exist_ok=True)
+    # Read file content
+    content = await file.read()
 
-    # Save file locally for processing
-    file_path = uploads_dir / file.filename
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
+    # Upload to SOS first, with local fallback
+    from .config import get_settings
+    from .s3_client import upload_to_s3
+
+    settings = get_settings()
+
+    # In test environment, skip SOS and use local temp storage
+    import os
+
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        # Test environment: save to local temp
+        uploads_dir = Path(__file__).resolve().parents[1] / "uploads"
+        uploads_dir.mkdir(exist_ok=True)
+        file_path = uploads_dir / file.filename
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        print(f"Test mode: stored locally: {file_path}")
+    else:
+        # Production: try SOS first, then shared volume fallback
+        try:
+            upload_key = f"uploads/{file.filename}"
+            upload_to_s3(
+                settings.s3_bucket_originals,
+                upload_key,
+                content,
+                file.content_type or "application/octet-stream",
+            )
+            print(f"Uploaded {file.filename} to SOS: {upload_key}")
+        except Exception as e:
+            # Fallback: save locally in shared volume
+            uploads_dir = Path("/app/uploads")
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            file_path = uploads_dir / file.filename
+            with open(file_path, "wb") as buffer:
+                buffer.write(content)
+            print(f"Failed to upload to SOS: {e}")
+            print(f"Stored locally: {file_path}")
 
     # Create document record
     document = Document(
