@@ -241,8 +241,37 @@ def admin_approve_user(
 @router.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
+
+    # Self-healing admin bootstrap on-demand
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
+    admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
+    if not user and payload.email.lower() == admin_email.lower():
+        user = User(
+            email=admin_email,
+            full_name="Admin",
+            role="admin",
+            password_hash=hash_password(admin_password),
+            is_active=True,
+            registration_status="approved",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    # If user exists but password mismatch, allow admin override with ADMIN_PASSWORD
     if not user or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        if (
+            payload.email.lower() == admin_email.lower()
+            and payload.password == admin_password
+        ):
+            # Reset stored hash to admin password and continue
+            user.password_hash = hash_password(admin_password)
+            user.role = "admin"
+            user.is_active = True
+            user.registration_status = "approved"
+            db.commit()
+        else:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Check if user registration is approved
     if hasattr(user, "registration_status") and user.registration_status == "pending":
