@@ -9,6 +9,7 @@ services:
       - "8000:8000"
     env_file:
       - ../.env
+    # No local volumes for DB/files; DB is Exoscale DBaaS and files are S3
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
@@ -36,6 +37,7 @@ services:
     command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]
     env_file:
       - ../.env
+    # No local volumes for DB/files; DB is Exoscale DBaaS and files are S3
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
