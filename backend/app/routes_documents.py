@@ -1082,6 +1082,32 @@ async def get_document_shares(
     ]
 
 
+@router.post("/{document_id}/reprocess")
+async def reprocess_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Trigger reprocessing of a document"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check permissions
+    if not _user_can_edit_document(db, document_id, current_user):
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    # Clear existing jobs for this document
+    db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).delete()
+    db.commit()
+
+    # Enqueue new processing jobs
+    _enqueue_processing_jobs(document_id, db)
+
+    return {"message": "Document reprocessing started", "document_id": document_id}
+
+
 @router.get("/{document_id}/access")
 async def check_document_access(
     document_id: int,
