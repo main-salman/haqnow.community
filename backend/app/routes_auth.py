@@ -134,6 +134,18 @@ def startup_migrate():
             if getattr(existing, "registration_status", "approved") != "approved":
                 existing.registration_status = "approved"
                 changed = True
+            # Reset password to match ADMIN_PASSWORD to avoid lockout
+            try:
+                # Only update if password doesn't verify
+                from .security import verify_password
+
+                if not verify_password(admin_password, existing.password_hash):
+                    existing.password_hash = hash_password(admin_password)
+                    changed = True
+            except Exception:
+                # As a safe fallback, set it
+                existing.password_hash = hash_password(admin_password)
+                changed = True
             if changed:
                 db.commit()
     finally:
