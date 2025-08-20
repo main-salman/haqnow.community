@@ -207,7 +207,7 @@ export default function DocumentViewerPage() {
 
 	useEffect(() => {
 		// connect to socket server
-		const s = io('/socket.io', { path: '/socket.io', transports: ['websocket'] })
+		const s = io('/socket.io', { path: '/socket.io', transports: ['websocket', 'polling'] })
 		socketRef.current = s
 		s.on('connect', () => {
 			s.emit('join_document', { document_id: documentId })
