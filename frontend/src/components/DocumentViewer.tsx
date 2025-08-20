@@ -347,9 +347,9 @@ export default function DocumentViewer({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showRedactions, setShowRedactions] = useState(true)
-  const [isDrawing, setIsDrawing] = useState(false)
-  const [drawStart, setDrawStart] = useState<{x: number, y: number} | null>(null)
-  const [currentRedaction, setCurrentRedaction] = useState<HTMLDivElement | null>(null)
+  const isDrawingRef = useRef(false)
+  const drawStartRef = useRef<{x: number, y: number} | null>(null)
+  const currentRedactionRef = useRef<HTMLDivElement | null>(null)
   const overlaysRef = useRef<{ type: 'redaction' | 'comment'; el: HTMLElement }[]>([])
   const draggingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
   const resizingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
@@ -427,14 +427,14 @@ export default function DocumentViewer({
       console.log('🔍 OSD: Setting up redaction handlers')
 
       osdViewer.addHandler('canvas-press', (event: any) => {
-        console.log('🎯 OSD canvas-press: redactionMode=', redactionMode, 'isDrawing=', isDrawing)
-        if (redactionMode && !isDrawing) {
+        console.log('🎯 OSD canvas-press: redactionMode=', redactionMode, 'isDrawing=', isDrawingRef.current)
+        if (redactionMode && !isDrawingRef.current) {
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
           const imagePoint = item.viewportToImageCoordinates(viewportPoint)
-          setDrawStart({x: imagePoint.x, y: imagePoint.y})
-          setIsDrawing(true)
+          drawStartRef.current = {x: imagePoint.x, y: imagePoint.y}
+          isDrawingRef.current = true
 
           // Create visual redaction rectangle
           const redactionDiv = document.createElement('div')
@@ -451,18 +451,23 @@ export default function DocumentViewer({
           redactionDiv.style.height = '2px'
 
           viewerRef.current?.appendChild(redactionDiv)
-          setCurrentRedaction(redactionDiv)
+          currentRedactionRef.current = redactionDiv
           console.log('🎯 OSD: Created redaction div at', pixelPoint.x, pixelPoint.y)
         }
       })
 
-      osdViewer.addHandler('canvas-drag', (event: any) => {
-        console.log('🎯 OSD canvas-drag:', { redactionMode, isDrawing, hasDrawStart: !!drawStart, hasCurrentRedaction: !!currentRedaction })
-        if (redactionMode && isDrawing && drawStart && currentRedaction) {
+            osdViewer.addHandler('canvas-drag', (event: any) => {
+        console.log('🎯 OSD canvas-drag:', {
+          redactionMode,
+          isDrawing: isDrawingRef.current,
+          hasDrawStart: !!drawStartRef.current,
+          hasCurrentRedaction: !!currentRedactionRef.current
+        })
+        if (redactionMode && isDrawingRef.current && drawStartRef.current && currentRedactionRef.current) {
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
           const viewportPoint = osdViewer.viewport.pointFromPixel(event.position)
-          const startViewportPoint = item.imageToViewportCoordinates(drawStart.x, drawStart.y)
+          const startViewportPoint = item.imageToViewportCoordinates(drawStartRef.current.x, drawStartRef.current.y)
           const startPixel = osdViewer.viewport.pixelFromPoint(startViewportPoint)
           const endPixel = osdViewer.viewport.pixelFromPoint(viewportPoint)
 
@@ -471,28 +476,33 @@ export default function DocumentViewer({
           const width = Math.abs(endPixel.x - startPixel.x)
           const height = Math.abs(endPixel.y - startPixel.y)
 
-          currentRedaction.style.left = left + 'px'
-          currentRedaction.style.top = top + 'px'
-          currentRedaction.style.width = Math.max(2, width) + 'px'
-          currentRedaction.style.height = Math.max(2, height) + 'px'
+          currentRedactionRef.current.style.left = left + 'px'
+          currentRedactionRef.current.style.top = top + 'px'
+          currentRedactionRef.current.style.width = Math.max(2, width) + 'px'
+          currentRedactionRef.current.style.height = Math.max(2, height) + 'px'
 
           console.log('🎯 OSD: Dragging redaction', { left, top, width, height })
         }
       })
 
       osdViewer.addHandler('canvas-release', (event: any) => {
-        console.log('🎯 OSD canvas-release:', { redactionMode, isDrawing, hasDrawStart: !!drawStart, hasCurrentRedaction: !!currentRedaction })
-        if (redactionMode && isDrawing && drawStart && currentRedaction) {
+        console.log('🎯 OSD canvas-release:', {
+          redactionMode,
+          isDrawing: isDrawingRef.current,
+          hasDrawStart: !!drawStartRef.current,
+          hasCurrentRedaction: !!currentRedactionRef.current
+        })
+        if (redactionMode && isDrawingRef.current && drawStartRef.current && currentRedactionRef.current) {
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
           const endViewportPoint = osdViewer.viewport.pointFromPixel(event.position)
           const endImagePoint = item.viewportToImageCoordinates(endViewportPoint)
 
           // Calculate redaction coordinates in IMAGE PIXELS
-          const x_start = Math.min(drawStart.x, endImagePoint.x)
-          const y_start = Math.min(drawStart.y, endImagePoint.y)
-          const x_end = Math.max(drawStart.x, endImagePoint.x)
-          const y_end = Math.max(drawStart.y, endImagePoint.y)
+          const x_start = Math.min(drawStartRef.current.x, endImagePoint.x)
+          const y_start = Math.min(drawStartRef.current.y, endImagePoint.y)
+          const x_end = Math.max(drawStartRef.current.x, endImagePoint.x)
+          const y_end = Math.max(drawStartRef.current.y, endImagePoint.y)
 
           console.log('🎯 OSD: Final redaction coords:', { x_start, y_start, x_end, y_end })
 
@@ -510,10 +520,10 @@ export default function DocumentViewer({
             console.log('🎯 OSD: Redaction too small, not creating')
           }
 
-          currentRedaction.remove()
-          setCurrentRedaction(null)
-          setIsDrawing(false)
-          setDrawStart(null)
+          currentRedactionRef.current.remove()
+          currentRedactionRef.current = null
+          isDrawingRef.current = false
+          drawStartRef.current = null
         }
       })
     }
