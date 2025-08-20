@@ -94,25 +94,21 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 @router.on_event("startup")
 def startup_migrate():
-    """Create tables and ensure at least one admin user exists.
+    """Create tables and, if there are no users at all, create a default admin.
 
-    In fresh deployments there may be no users. To prevent lock-out,
-    bootstrap a default admin from environment variables:
-      - ADMIN_EMAIL (default: admin@haqnow.com)
-      - ADMIN_PASSWORD (default: changeme123)
-    The bootstrap runs ONLY when there are no users.
+    This does NOT modify existing users or passwords. It only seeds once when
+    the user table is empty, ensuring the database remains the source of truth.
     """
     Base.metadata.create_all(bind=engine)
     from .models import User
 
     db = SessionLocal()
     try:
-        admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
-        admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
-        existing = db.query(User).filter(User.email == admin_email).first()
-        if not existing:
-            # Create admin if doesn't exist
-            user = User(
+        any_user = db.query(User).first()
+        if not any_user:
+            admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
+            admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
+            admin = User(
                 email=admin_email,
                 full_name="Admin",
                 role="admin",
@@ -120,34 +116,8 @@ def startup_migrate():
                 is_active=True,
                 registration_status="approved",
             )
-            db.add(user)
+            db.add(admin)
             db.commit()
-        else:
-            # Ensure role/active/registration flags are correct
-            changed = False
-            if existing.role != "admin":
-                existing.role = "admin"
-                changed = True
-            if not existing.is_active:
-                existing.is_active = True
-                changed = True
-            if getattr(existing, "registration_status", "approved") != "approved":
-                existing.registration_status = "approved"
-                changed = True
-            # Reset password to match ADMIN_PASSWORD to avoid lockout
-            try:
-                # Only update if password doesn't verify
-                from .security import verify_password
-
-                if not verify_password(admin_password, existing.password_hash):
-                    existing.password_hash = hash_password(admin_password)
-                    changed = True
-            except Exception:
-                # As a safe fallback, set it
-                existing.password_hash = hash_password(admin_password)
-                changed = True
-            if changed:
-                db.commit()
     finally:
         db.close()
 
@@ -242,36 +212,8 @@ def admin_approve_user(
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
 
-    # Self-healing admin bootstrap on-demand
-    admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
-    admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
-    if not user and payload.email.lower() == admin_email.lower():
-        user = User(
-            email=admin_email,
-            full_name="Admin",
-            role="admin",
-            password_hash=hash_password(admin_password),
-            is_active=True,
-            registration_status="approved",
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-    # If user exists but password mismatch, allow admin override with ADMIN_PASSWORD
     if not user or not verify_password(payload.password, user.password_hash):
-        if (
-            payload.email.lower() == admin_email.lower()
-            and payload.password == admin_password
-        ):
-            # Reset stored hash to admin password and continue
-            user.password_hash = hash_password(admin_password)
-            user.role = "admin"
-            user.is_active = True
-            user.registration_status = "approved"
-            db.commit()
-        else:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Check if user registration is approved
     if hasattr(user, "registration_status") and user.registration_status == "pending":
