@@ -71,6 +71,7 @@ export default function DocumentViewer({
 }: DocumentViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null)
+  const [useImageFallback, setUseImageFallback] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showRedactions, setShowRedactions] = useState(true)
@@ -120,6 +121,16 @@ export default function DocumentViewer({
       defaultZoomLevel: 1.0,
     })
 
+    // If OSD fails to open quickly, fall back to simple <img>
+    const fallbackTimer = window.setTimeout(() => {
+      try {
+        const count = osdViewer.world.getItemCount()
+        if (count === 0) setUseImageFallback(true)
+      } catch {
+        setUseImageFallback(true)
+      }
+    }, 1500)
+
     // Handle single clicks to add comments (when not redacting)
     osdViewer.addHandler('canvas-click', (event: any) => {
       if (redactionMode) return
@@ -133,7 +144,8 @@ export default function DocumentViewer({
 
     // Add overlay for annotations and redactions when image opens
     osdViewer.addHandler('open', () => {
-      // handled by effect below which reacts to dependencies
+      window.clearTimeout(fallbackTimer)
+      setUseImageFallback(false)
     })
 
     // Add redaction drawing handlers
@@ -232,6 +244,7 @@ export default function DocumentViewer({
       if (osdViewer) {
         osdViewer.destroy()
       }
+      window.clearTimeout(fallbackTimer)
     }
   }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode])
 
@@ -486,7 +499,17 @@ export default function DocumentViewer({
   return (
     <div className={clsx('relative bg-gray-100 rounded-lg overflow-hidden', className)}>
       {/* Viewer Container */}
-      <div ref={viewerRef} data-testid="viewer-container" className="document-viewer w-full h-full min-h-[600px]" />
+      {useImageFallback ? (
+        <img
+          src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
+          alt={`Document ${documentId} page ${pageNumber + 1}`}
+          className="w-full h-auto min-h-[600px] object-contain bg-white"
+          onLoad={() => setUseImageFallback(true)}
+          onError={() => setUseImageFallback(true)}
+        />
+      ) : (
+        <div ref={viewerRef} data-testid="viewer-container" className="document-viewer w-full h-full min-h-[600px]" />
+      )}
 
       {/* Toolbar */}
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2 flex items-center space-x-2">
