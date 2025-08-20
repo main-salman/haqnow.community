@@ -426,6 +426,7 @@ export default function DocumentViewerPage() {
 						totalPages={3}
 						className="h-[70vh]"
 						redactionMode={mode === 'redact'}
+						commentMode={mode === 'comment'}
 						onRedactionCreate={handleCreateRedaction}
 						onAddCommentAt={handleViewerClickAddComment}
 						redactions={Array.isArray(liveRedactions) && liveRedactions.length ? liveRedactions : redactions}

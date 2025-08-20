@@ -19,6 +19,7 @@ interface DocumentViewerProps {
   totalPages?: number
   className?: string
   redactionMode?: boolean
+  commentMode?: boolean
   onRedactionCreate?: (redaction: {
     page_number: number
     x_start: number
@@ -62,6 +63,7 @@ export default function DocumentViewer({
   totalPages = 1,
   className,
   redactionMode = false,
+  commentMode = false,
   onRedactionCreate,
   onRedactionUpdate,
   onRedactionDelete,
@@ -131,10 +133,10 @@ export default function DocumentViewer({
       }
     }, 1500)
 
-    // Handle single clicks to add comments (when not redacting)
+    // Handle single clicks to add comments (when in comment mode)
     osdViewer.addHandler('canvas-click', (event: any) => {
       if (redactionMode) return
-      if (!onAddCommentAt) return
+      if (!commentMode || !onAddCommentAt) return
       const item = osdViewer.world.getItemAt(0)
       if (!item) return
       const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
@@ -498,15 +500,37 @@ export default function DocumentViewer({
 
   return (
     <div className={clsx('relative bg-gray-100 rounded-lg overflow-hidden', className)}>
+      {/* Mode Indicator */}
+      {(commentMode || redactionMode) && (
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 z-50 px-3 py-1 rounded-full text-xs font-medium bg-white shadow-lg">
+          {commentMode && <span className="text-blue-700">💬 Click anywhere to add comment</span>}
+          {redactionMode && <span className="text-red-700">✏️ Drag to draw redaction rectangle</span>}
+        </div>
+      )}
+
       {/* Viewer Container */}
       {useImageFallback ? (
-        <img
-          src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
-          alt={`Document ${documentId} page ${pageNumber + 1}`}
-          className="w-full h-auto min-h-[600px] object-contain bg-white"
-          onLoad={() => setUseImageFallback(true)}
-          onError={() => setUseImageFallback(true)}
-        />
+        <div className="relative w-full h-full min-h-[600px] bg-white">
+          <img
+            src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
+            alt={`Document ${documentId} page ${pageNumber + 1}`}
+            className="w-full h-auto object-contain"
+            onLoad={() => setUseImageFallback(true)}
+            onError={() => setUseImageFallback(true)}
+            onClick={(e) => {
+              if (commentMode && onAddCommentAt) {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const x = e.clientX - rect.left
+                const y = e.clientY - rect.top
+                // Convert to image coordinates (assuming 300 DPI)
+                const imgX = (x / rect.width) * 2400 // Assuming ~2400px width at 300 DPI
+                const imgY = (y / rect.height) * 3600 // Assuming ~3600px height at 300 DPI
+                onAddCommentAt(imgX, imgY, pageNumber)
+              }
+            }}
+            style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
+          />
+        </div>
       ) : (
         <div ref={viewerRef} data-testid="viewer-container" className="document-viewer w-full h-full min-h-[600px]" />
       )}
