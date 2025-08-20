@@ -94,18 +94,19 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 @router.on_event("startup")
 def startup_migrate():
-    """Create tables and, if there are no users at all, create a default admin.
+    """Create tables and ensure at least one admin exists.
 
-    This does NOT modify existing users or passwords. It only seeds once when
-    the user table is empty, ensuring the database remains the source of truth.
+    - If there are zero admins, create one from env (ADMIN_EMAIL/ADMIN_PASSWORD).
+    - Never modify existing users' passwords.
+    DB remains the source of truth.
     """
     Base.metadata.create_all(bind=engine)
     from .models import User
 
     db = SessionLocal()
     try:
-        any_user = db.query(User).first()
-        if not any_user:
+        admin_exists = db.query(User).filter(User.role == "admin").first() is not None
+        if not admin_exists:
             admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
             admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
             admin = User(
