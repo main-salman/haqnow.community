@@ -70,12 +70,17 @@ function ImageFallbackViewer({
             setCommentText('')
           }
         }}
-                onMouseDown={(e) => {
+                        onMouseDown={(e) => {
           if (redactionMode && onRedactionCreate) {
             e.preventDefault()
+            e.stopPropagation()
+
             const rect = e.currentTarget.getBoundingClientRect()
             const startX = e.clientX - rect.left
             const startY = e.clientY - rect.top
+
+            console.log('🎯 REDACTION: Starting draw at', startX, startY, 'redactionMode:', redactionMode)
+
             setRedactionStart({ x: startX, y: startY })
             setIsDrawingRedaction(true)
 
@@ -88,16 +93,15 @@ function ImageFallbackViewer({
             redactionDiv.style.zIndex = '1000'
             redactionDiv.style.left = startX + 'px'
             redactionDiv.style.top = startY + 'px'
-            redactionDiv.style.width = '0px'
-            redactionDiv.style.height = '0px'
-            redactionDiv.id = 'temp-redaction'
+            redactionDiv.style.width = '2px'
+            redactionDiv.style.height = '2px'
+            redactionDiv.id = 'temp-redaction-' + Date.now()
 
             e.currentTarget.parentElement?.appendChild(redactionDiv)
-            console.log('Started redaction drawing at:', startX, startY)
             setCurrentRedaction(redactionDiv)
 
             // Use global mouse events for reliable dragging
-            const handleGlobalMouseMove = (moveEvent: MouseEvent) => {
+                        const handleGlobalMouseMove = (moveEvent: MouseEvent) => {
               if (redactionDiv) {
                 const currentX = moveEvent.clientX - rect.left
                 const currentY = moveEvent.clientY - rect.top
@@ -109,10 +113,10 @@ function ImageFallbackViewer({
 
                 redactionDiv.style.left = left + 'px'
                 redactionDiv.style.top = top + 'px'
-                redactionDiv.style.width = width + 'px'
-                redactionDiv.style.height = height + 'px'
+                redactionDiv.style.width = Math.max(2, width) + 'px'
+                redactionDiv.style.height = Math.max(2, height) + 'px'
 
-                console.log('Drawing redaction:', { left, top, width, height })
+                console.log('🎯 REDACTION: Drawing', { left, top, width, height })
               }
             }
 
@@ -155,28 +159,33 @@ function ImageFallbackViewer({
         style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
       />
 
-            {/* Comment pins on image fallback */}
+                  {/* Comment pins on image fallback */}
       {imageSize.width > 0 && comments
         .filter(c => c.page_number === pageNumber)
         .map((comment) => {
-          const x = (comment.x_position / 2400) * imageSize.width
-          const y = (comment.y_position / 3600) * imageSize.height
+          // Use relative positioning based on image dimensions
+          const x = Math.max(0, Math.min((comment.x_position / 2400) * imageSize.width, imageSize.width - 12))
+          const y = Math.max(0, Math.min((comment.y_position / 3600) * imageSize.height, imageSize.height - 12))
 
           return (
             <div
               key={comment.id}
-              className="absolute w-3 h-3 bg-blue-600 rounded-full shadow-lg cursor-pointer z-10"
-              style={{ left: x - 6, top: y - 6 }}
+              className="absolute w-3 h-3 bg-blue-600 rounded-full shadow-lg cursor-pointer z-20"
+              style={{
+                left: x,
+                top: y,
+                transform: 'translate(-50%, -50%)' // Center the pin on the coordinates
+              }}
               title={comment.content}
               onClick={(e) => {
                 e.stopPropagation()
-                alert(comment.content) // Simple popup for now
+                alert(comment.content)
               }}
             />
           )
         })}
 
-            {/* Redaction rectangles on image fallback */}
+                  {/* Redaction rectangles on image fallback */}
       {imageSize.width > 0 && redactions
         .filter(r => r.page_number === pageNumber)
         .map((redaction) => {
@@ -188,7 +197,7 @@ function ImageFallbackViewer({
           return (
             <div
               key={redaction.id}
-              className="absolute bg-black bg-opacity-85 border border-black z-10 cursor-pointer"
+              className="absolute bg-black bg-opacity-90 border border-red-500 z-15 cursor-pointer"
               style={{ left: x, top: y, width, height }}
               title={`Redaction: ${redaction.reason || 'No reason'}`}
             />
