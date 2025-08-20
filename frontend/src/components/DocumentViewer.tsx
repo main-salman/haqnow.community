@@ -405,12 +405,14 @@ export default function DocumentViewer({
 
     // Handle single clicks to add comments (when in comment mode)
     osdViewer.addHandler('canvas-click', (event: any) => {
+      console.log('🔍 OSD canvas-click:', { commentMode, redactionMode })
       if (redactionMode) return
       if (!commentMode || !onAddCommentAt) return
       const item = osdViewer.world.getItemAt(0)
       if (!item) return
       const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
       const imgPoint = item.viewportToImageCoordinates(vpPoint)
+      console.log('🔍 OSD comment click at:', imgPoint.x, imgPoint.y)
       onAddCommentAt(imgPoint.x, imgPoint.y, pageNumber)
     })
 
@@ -422,7 +424,10 @@ export default function DocumentViewer({
 
     // Add redaction drawing handlers
     if (redactionMode) {
+      console.log('🔍 OSD: Setting up redaction handlers')
+
       osdViewer.addHandler('canvas-press', (event: any) => {
+        console.log('🎯 OSD canvas-press: redactionMode=', redactionMode, 'isDrawing=', isDrawing)
         if (redactionMode && !isDrawing) {
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
@@ -434,7 +439,7 @@ export default function DocumentViewer({
           // Create visual redaction rectangle
           const redactionDiv = document.createElement('div')
           redactionDiv.style.position = 'absolute'
-          redactionDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.3)'
+          redactionDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.6)'
           redactionDiv.style.border = '2px solid red'
           redactionDiv.style.pointerEvents = 'none'
           redactionDiv.style.zIndex = '1000'
@@ -442,15 +447,17 @@ export default function DocumentViewer({
           const pixelPoint = osdViewer.viewport.pixelFromPoint(viewportPoint)
           redactionDiv.style.left = pixelPoint.x + 'px'
           redactionDiv.style.top = pixelPoint.y + 'px'
-          redactionDiv.style.width = '0px'
-          redactionDiv.style.height = '0px'
+          redactionDiv.style.width = '2px'
+          redactionDiv.style.height = '2px'
 
           viewerRef.current?.appendChild(redactionDiv)
           setCurrentRedaction(redactionDiv)
+          console.log('🎯 OSD: Created redaction div at', pixelPoint.x, pixelPoint.y)
         }
       })
 
       osdViewer.addHandler('canvas-drag', (event: any) => {
+        console.log('🎯 OSD canvas-drag:', { redactionMode, isDrawing, hasDrawStart: !!drawStart, hasCurrentRedaction: !!currentRedaction })
         if (redactionMode && isDrawing && drawStart && currentRedaction) {
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
@@ -466,12 +473,15 @@ export default function DocumentViewer({
 
           currentRedaction.style.left = left + 'px'
           currentRedaction.style.top = top + 'px'
-          currentRedaction.style.width = width + 'px'
-          currentRedaction.style.height = height + 'px'
+          currentRedaction.style.width = Math.max(2, width) + 'px'
+          currentRedaction.style.height = Math.max(2, height) + 'px'
+
+          console.log('🎯 OSD: Dragging redaction', { left, top, width, height })
         }
       })
 
       osdViewer.addHandler('canvas-release', (event: any) => {
+        console.log('🎯 OSD canvas-release:', { redactionMode, isDrawing, hasDrawStart: !!drawStart, hasCurrentRedaction: !!currentRedaction })
         if (redactionMode && isDrawing && drawStart && currentRedaction) {
           const item = osdViewer.world.getItemAt(0)
           if (!item) return
@@ -484,7 +494,10 @@ export default function DocumentViewer({
           const x_end = Math.max(drawStart.x, endImagePoint.x)
           const y_end = Math.max(drawStart.y, endImagePoint.y)
 
+          console.log('🎯 OSD: Final redaction coords:', { x_start, y_start, x_end, y_end })
+
           if (Math.abs(x_end - x_start) > 2 && Math.abs(y_end - y_start) > 2) {
+            console.log('🎯 OSD: Creating redaction via API')
             onRedactionCreate?.({
               page_number: pageNumber,
               x_start,
@@ -493,6 +506,8 @@ export default function DocumentViewer({
               y_end,
               reason: 'User redaction'
             })
+          } else {
+            console.log('🎯 OSD: Redaction too small, not creating')
           }
 
           currentRedaction.remove()
