@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
 
     # Mount Socket.IO for collaboration while keeping FastAPI instance
     # so lifecycle events and dependency injection continue to work.
+    # Mount Socket.IO ASGI app at /socket.io, enable CORS headers for polling
     socketio_app = socketio.ASGIApp(sio, socketio_path="/socket.io")
     app.mount("/socket.io", socketio_app)
 

@@ -12,8 +12,13 @@ from .models import Document, User
 
 logger = logging.getLogger(__name__)
 
-# Create Socket.IO server
-sio = socketio.AsyncServer(cors_allowed_origins="*", logger=True, engineio_logger=True)
+# Create Socket.IO server in explicit ASGI mode to match Starlette/FastAPI
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins="*",
+    logger=True,
+    engineio_logger=True,
+)
 
 # Store active sessions and document rooms
 active_sessions: Dict[str, Dict[str, Any]] = {}
