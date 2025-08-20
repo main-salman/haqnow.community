@@ -12,7 +12,7 @@ class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite+pysqlite:///./dev.db")
 
     s3_endpoint: str | None = os.getenv("S3_ENDPOINT")
-    s3_region: str = os.getenv("S3_REGION", "auto")
+    s3_region: str = os.getenv("S3_REGION", "ch-gva-2")
     s3_access_key: str | None = os.getenv("EXOSCALE_S3_ACCESS_KEY")
     s3_secret_key: str | None = os.getenv("EXOSCALE_S3_SECRET_KEY")
     s3_bucket_originals: str = os.getenv("S3_BUCKET_ORIGINALS", "originals")
