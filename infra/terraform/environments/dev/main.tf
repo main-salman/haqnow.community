@@ -73,6 +73,16 @@ resource "exoscale_security_group_rule" "frontend" {
   cidr              = "0.0.0.0/0"
 }
 
+# Allow all outbound traffic (required for DBaaS connectivity)
+resource "exoscale_security_group_rule" "egress_all" {
+  security_group_id = exoscale_security_group.main.id
+  type              = "EGRESS"
+  protocol          = "TCP"
+  start_port        = 1
+  end_port          = 65535
+  cidr              = "0.0.0.0/0"
+}
+
 # Create compute instance
 resource "exoscale_compute_instance" "main" {
   zone         = var.exoscale_zone
