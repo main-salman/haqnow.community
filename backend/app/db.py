@@ -23,8 +23,10 @@ if os.getenv("PYTEST_CURRENT_TEST"):
         poolclass=StaticPool,
     )
 else:
+    # Normalize postgres URI for SQLAlchemy (psycopg2)
+    db_url = settings.database_url.replace("postgres://", "postgresql+psycopg2://")
     engine = create_engine(
-        settings.database_url,
+        db_url,
         future=True,
         connect_args={"check_same_thread": False}
         if settings.database_url.startswith("sqlite")
