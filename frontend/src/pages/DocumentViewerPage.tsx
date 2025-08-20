@@ -272,22 +272,29 @@ export default function DocumentViewerPage() {
 
 	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
 		if (mode !== 'comment') return
-		const defaultText = newComment.trim() ? newComment : 'New comment'
-		setNewComment('')
+
+		// Show popup to get comment text
+		const commentText = window.prompt('Enter your comment:')
+		if (!commentText || !commentText.trim()) {
+			return // User cancelled or entered empty text
+		}
+
 		documentsApi.addComment(documentId, {
-			content: defaultText,
+			content: commentText.trim(),
 			page_number: page,
 			x_position: x,
 			y_position: y,
 		}).then(() => {
 			toast.success('Comment added')
 			queryClient.invalidateQueries(['document-comments', documentId])
+			setMode('view') // Exit comment mode after adding
 		}).catch(() => toast.error('Failed to add comment'))
+
 		// emit live comment marker to others
 		if (socketRef.current) {
 			socketRef.current.emit('add_comment', {
 				document_id: documentId,
-				comment: { page_number: page, x_position: x, y_position: y, content: newComment || 'New comment' }
+				comment: { page_number: page, x_position: x, y_position: y, content: commentText.trim() }
 			})
 		}
 	}

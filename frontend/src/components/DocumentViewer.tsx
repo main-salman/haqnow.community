@@ -248,7 +248,7 @@ export default function DocumentViewer({
       }
       window.clearTimeout(fallbackTimer)
     }
-  }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode])
+  }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode, commentMode])
 
   // Render overlays for redactions and comments
   useEffect(() => {
@@ -526,6 +526,46 @@ export default function DocumentViewer({
                 const imgX = (x / rect.width) * 2400 // Assuming ~2400px width at 300 DPI
                 const imgY = (y / rect.height) * 3600 // Assuming ~3600px height at 300 DPI
                 onAddCommentAt(imgX, imgY, pageNumber)
+              }
+            }}
+            onMouseDown={(e) => {
+              if (redactionMode && onRedactionCreate) {
+                // Start redaction drawing on image fallback
+                const rect = e.currentTarget.getBoundingClientRect()
+                const startX = e.clientX - rect.left
+                const startY = e.clientY - rect.top
+
+                const handleMouseMove = (moveEvent: MouseEvent) => {
+                  // Visual feedback could be added here
+                }
+
+                const handleMouseUp = (upEvent: MouseEvent) => {
+                  const endX = upEvent.clientX - rect.left
+                  const endY = upEvent.clientY - rect.top
+
+                  // Convert to image coordinates
+                  const imgX1 = (Math.min(startX, endX) / rect.width) * 2400
+                  const imgY1 = (Math.min(startY, endY) / rect.height) * 3600
+                  const imgX2 = (Math.max(startX, endX) / rect.width) * 2400
+                  const imgY2 = (Math.max(startY, endY) / rect.height) * 3600
+
+                  if (Math.abs(imgX2 - imgX1) > 10 && Math.abs(imgY2 - imgY1) > 10) {
+                    onRedactionCreate({
+                      page_number: pageNumber,
+                      x_start: imgX1,
+                      y_start: imgY1,
+                      x_end: imgX2,
+                      y_end: imgY2,
+                      reason: 'User redaction'
+                    })
+                  }
+
+                  document.removeEventListener('mousemove', handleMouseMove)
+                  document.removeEventListener('mouseup', handleMouseUp)
+                }
+
+                document.addEventListener('mousemove', handleMouseMove)
+                document.addEventListener('mouseup', handleMouseUp)
               }
             }}
             style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
