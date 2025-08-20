@@ -12,6 +12,228 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
+// Image Fallback Viewer Component
+function ImageFallbackViewer({
+  documentId,
+  pageNumber,
+  commentMode,
+  redactionMode,
+  onAddCommentAt,
+  onRedactionCreate,
+  comments,
+  redactions
+}: {
+  documentId: number
+  pageNumber: number
+  commentMode: boolean
+  redactionMode: boolean
+  onAddCommentAt?: (x: number, y: number, page: number) => void
+  onRedactionCreate?: (redaction: any) => void
+  comments: any[]
+  redactions: any[]
+}) {
+  const [showCommentInput, setShowCommentInput] = useState(false)
+  const [commentPosition, setCommentPosition] = useState({ x: 0, y: 0 })
+  const [commentText, setCommentText] = useState('')
+  const [isDrawingRedaction, setIsDrawingRedaction] = useState(false)
+  const [redactionStart, setRedactionStart] = useState<{x: number, y: number} | null>(null)
+  const [currentRedaction, setCurrentRedaction] = useState<HTMLDivElement | null>(null)
+
+  return (
+    <div className="relative w-full h-full min-h-[600px] bg-white">
+      <img
+        src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
+        alt={`Document ${documentId} page ${pageNumber + 1}`}
+        className="w-full h-auto object-contain"
+        onClick={(e) => {
+          if (commentMode && onAddCommentAt) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            const y = e.clientY - rect.top
+
+            // Show in-place comment input
+            setCommentPosition({ x, y })
+            setShowCommentInput(true)
+            setCommentText('')
+          }
+        }}
+        onMouseDown={(e) => {
+          if (redactionMode && onRedactionCreate) {
+            e.preventDefault()
+            const rect = e.currentTarget.getBoundingClientRect()
+            const startX = e.clientX - rect.left
+            const startY = e.clientY - rect.top
+            setRedactionStart({ x: startX, y: startY })
+            setIsDrawingRedaction(true)
+
+            // Create visual redaction rectangle
+            const redactionDiv = document.createElement('div')
+            redactionDiv.style.position = 'absolute'
+            redactionDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.8)'
+            redactionDiv.style.border = '2px solid red'
+            redactionDiv.style.pointerEvents = 'none'
+            redactionDiv.style.zIndex = '1000'
+            redactionDiv.style.left = startX + 'px'
+            redactionDiv.style.top = startY + 'px'
+            redactionDiv.style.width = '0px'
+            redactionDiv.style.height = '0px'
+
+            e.currentTarget.parentElement?.appendChild(redactionDiv)
+            setCurrentRedaction(redactionDiv)
+          }
+        }}
+        onMouseMove={(e) => {
+          if (isDrawingRedaction && redactionStart && currentRedaction) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const currentX = e.clientX - rect.left
+            const currentY = e.clientY - rect.top
+
+            const left = Math.min(redactionStart.x, currentX)
+            const top = Math.min(redactionStart.y, currentY)
+            const width = Math.abs(currentX - redactionStart.x)
+            const height = Math.abs(currentY - redactionStart.y)
+
+            currentRedaction.style.left = left + 'px'
+            currentRedaction.style.top = top + 'px'
+            currentRedaction.style.width = width + 'px'
+            currentRedaction.style.height = height + 'px'
+          }
+        }}
+        onMouseUp={(e) => {
+          if (isDrawingRedaction && redactionStart && currentRedaction && onRedactionCreate) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const endX = e.clientX - rect.left
+            const endY = e.clientY - rect.top
+
+            // Convert to image coordinates (300 DPI)
+            const imgX1 = (Math.min(redactionStart.x, endX) / rect.width) * 2400
+            const imgY1 = (Math.min(redactionStart.y, endY) / rect.height) * 3600
+            const imgX2 = (Math.max(redactionStart.x, endX) / rect.width) * 2400
+            const imgY2 = (Math.max(redactionStart.y, endY) / rect.height) * 3600
+
+            if (Math.abs(imgX2 - imgX1) > 10 && Math.abs(imgY2 - imgY1) > 10) {
+              onRedactionCreate({
+                page_number: pageNumber,
+                x_start: imgX1,
+                y_start: imgY1,
+                x_end: imgX2,
+                y_end: imgY2,
+                reason: 'User redaction'
+              })
+            }
+
+            currentRedaction.remove()
+            setCurrentRedaction(null)
+            setIsDrawingRedaction(false)
+            setRedactionStart(null)
+          }
+        }}
+        style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
+      />
+
+      {/* Comment pins on image fallback */}
+      {comments
+        .filter(c => c.page_number === pageNumber)
+        .map((comment) => {
+          const img = document.querySelector(`img[src*="/api/documents/${documentId}/thumbnail/${pageNumber}"]`) as HTMLImageElement
+          if (!img) return null
+
+          const rect = img.getBoundingClientRect()
+          const x = (comment.x_position / 2400) * rect.width
+          const y = (comment.y_position / 3600) * rect.height
+
+          return (
+            <div
+              key={comment.id}
+              className="absolute w-3 h-3 bg-blue-600 rounded-full shadow-lg cursor-pointer z-10"
+              style={{ left: x - 6, top: y - 6 }}
+              title={comment.content}
+              onClick={(e) => {
+                e.stopPropagation()
+                alert(comment.content) // Simple popup for now
+              }}
+            />
+          )
+        })}
+
+      {/* Redaction rectangles on image fallback */}
+      {redactions
+        .filter(r => r.page_number === pageNumber)
+        .map((redaction) => {
+          const img = document.querySelector(`img[src*="/api/documents/${documentId}/thumbnail/${pageNumber}"]`) as HTMLImageElement
+          if (!img) return null
+
+          const rect = img.getBoundingClientRect()
+          const x = (Math.min(redaction.x_start, redaction.x_end) / 2400) * rect.width
+          const y = (Math.min(redaction.y_start, redaction.y_end) / 3600) * rect.height
+          const width = (Math.abs(redaction.x_end - redaction.x_start) / 2400) * rect.width
+          const height = (Math.abs(redaction.y_end - redaction.y_start) / 3600) * rect.height
+
+          return (
+            <div
+              key={redaction.id}
+              className="absolute bg-black bg-opacity-85 border border-black z-10"
+              style={{ left: x, top: y, width, height }}
+            />
+          )
+        })}
+
+      {/* In-place comment input */}
+      {showCommentInput && (
+        <div
+          className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-3"
+          style={{
+            left: commentPosition.x,
+            top: commentPosition.y - 80,
+            minWidth: '200px'
+          }}
+        >
+          <textarea
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder="Enter your comment..."
+            className="w-full p-2 border border-gray-200 rounded text-sm resize-none"
+            rows={3}
+            autoFocus
+          />
+          <div className="flex justify-end space-x-2 mt-2">
+            <button
+              onClick={() => {
+                setShowCommentInput(false)
+                setCommentText('')
+              }}
+              className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (commentText.trim() && onAddCommentAt) {
+                  const img = document.querySelector(`img[src*="/api/documents/${documentId}/thumbnail/${pageNumber}"]`) as HTMLImageElement
+                  if (img) {
+                    const rect = img.getBoundingClientRect()
+                    const imgX = (commentPosition.x / rect.width) * 2400
+                    const imgY = (commentPosition.y / rect.height) * 3600
+
+                    // Create a custom comment handler that includes the text
+                    window.tempCommentText = commentText.trim()
+                    onAddCommentAt(imgX, imgY, pageNumber)
+                  }
+                }
+                setShowCommentInput(false)
+                setCommentText('')
+              }}
+              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface DocumentViewerProps {
   documentId: number
   pageNumber?: number
@@ -509,68 +731,18 @@ export default function DocumentViewer({
       )}
 
       {/* Viewer Container */}
-      {useImageFallback ? (
-        <div className="relative w-full h-full min-h-[600px] bg-white">
-          <img
-            src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
-            alt={`Document ${documentId} page ${pageNumber + 1}`}
-            className="w-full h-auto object-contain"
-            onLoad={() => setUseImageFallback(true)}
-            onError={() => setUseImageFallback(true)}
-            onClick={(e) => {
-              if (commentMode && onAddCommentAt) {
-                const rect = e.currentTarget.getBoundingClientRect()
-                const x = e.clientX - rect.left
-                const y = e.clientY - rect.top
-                // Convert to image coordinates (assuming 300 DPI)
-                const imgX = (x / rect.width) * 2400 // Assuming ~2400px width at 300 DPI
-                const imgY = (y / rect.height) * 3600 // Assuming ~3600px height at 300 DPI
-                onAddCommentAt(imgX, imgY, pageNumber)
-              }
-            }}
-            onMouseDown={(e) => {
-              if (redactionMode && onRedactionCreate) {
-                // Start redaction drawing on image fallback
-                const rect = e.currentTarget.getBoundingClientRect()
-                const startX = e.clientX - rect.left
-                const startY = e.clientY - rect.top
+            {useImageFallback ? (
+        <ImageFallbackViewer
+          documentId={documentId}
+          pageNumber={pageNumber}
+          commentMode={commentMode}
+          redactionMode={redactionMode}
+          onAddCommentAt={onAddCommentAt}
+          onRedactionCreate={onRedactionCreate}
+          comments={comments}
+          redactions={redactions}
+        />
 
-                const handleMouseMove = (moveEvent: MouseEvent) => {
-                  // Visual feedback could be added here
-                }
-
-                const handleMouseUp = (upEvent: MouseEvent) => {
-                  const endX = upEvent.clientX - rect.left
-                  const endY = upEvent.clientY - rect.top
-
-                  // Convert to image coordinates
-                  const imgX1 = (Math.min(startX, endX) / rect.width) * 2400
-                  const imgY1 = (Math.min(startY, endY) / rect.height) * 3600
-                  const imgX2 = (Math.max(startX, endX) / rect.width) * 2400
-                  const imgY2 = (Math.max(startY, endY) / rect.height) * 3600
-
-                  if (Math.abs(imgX2 - imgX1) > 10 && Math.abs(imgY2 - imgY1) > 10) {
-                    onRedactionCreate({
-                      page_number: pageNumber,
-                      x_start: imgX1,
-                      y_start: imgY1,
-                      x_end: imgX2,
-                      y_end: imgY2,
-                      reason: 'User redaction'
-                    })
-                  }
-
-                  document.removeEventListener('mousemove', handleMouseMove)
-                  document.removeEventListener('mouseup', handleMouseUp)
-                }
-
-                document.addEventListener('mousemove', handleMouseMove)
-                document.addEventListener('mouseup', handleMouseUp)
-              }
-            }}
-            style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
-          />
-        </div>
       ) : (
         <div ref={viewerRef} data-testid="viewer-container" className="document-viewer w-full h-full min-h-[600px]" />
       )}

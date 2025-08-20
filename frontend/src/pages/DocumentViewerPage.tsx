@@ -270,14 +270,17 @@ export default function DocumentViewerPage() {
 
 	// overlays are now rendered by DocumentViewer via OpenSeadragon overlays
 
-	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
+		const handleViewerClickAddComment = (x: number, y: number, page: number) => {
 		if (mode !== 'comment') return
 
-		// Show popup to get comment text
-		const commentText = window.prompt('Enter your comment:')
+		// Check if we have text from the in-place input (ImageFallbackViewer)
+		const commentText = (window as any).tempCommentText || window.prompt('Enter your comment:')
 		if (!commentText || !commentText.trim()) {
 			return // User cancelled or entered empty text
 		}
+
+		// Clear the temp text
+		delete (window as any).tempCommentText
 
 		documentsApi.addComment(documentId, {
 			content: commentText.trim(),
