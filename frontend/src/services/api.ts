@@ -33,9 +33,13 @@ axios.interceptors.response.use(
   (resp) => resp,
   (error) => {
     if (error?.response?.status === 401) {
-      try { useAuthStore.getState().logout() } catch {}
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
+      const url: string = error?.config?.url || ''
+      const isAuthFlow = url.includes('/api/auth/login') || url.includes('/api/auth/mfa') || url.includes('/api/auth/register')
+      if (!isAuthFlow) {
+        try { useAuthStore.getState().logout() } catch {}
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login'
+        }
       }
     }
     return Promise.reject(error)
