@@ -27,7 +27,9 @@ sentence-transformers = "^3.3.1"
 langchain = "^0.3.7"
 langchain-ollama = "^0.2.0"
 websockets = "^13.1"
-python-socketio = "^5.11.4"
+# Pin compatible Socket.IO/Engine.IO versions to fix ASGI translate_request error
+python-socketio = "5.8.0"
+python-engineio = "4.4.1"
 qrcode = "^8.0"
 
 [tool.poetry.group.dev.dependencies]
