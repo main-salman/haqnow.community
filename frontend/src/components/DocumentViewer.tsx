@@ -52,7 +52,13 @@ function ImageFallbackViewer({
           const img = e.currentTarget
           setImageSize({ width: img.offsetWidth, height: img.offsetHeight })
         }}
-        onClick={(e) => {
+                onClick={(e) => {
+          // Prevent click if we're in redaction mode (use drag instead)
+          if (redactionMode) {
+            e.preventDefault()
+            return
+          }
+
           if (commentMode && onAddCommentAt) {
             const rect = e.currentTarget.getBoundingClientRect()
             const x = e.clientX - rect.left
@@ -64,7 +70,7 @@ function ImageFallbackViewer({
             setCommentText('')
           }
         }}
-        onMouseDown={(e) => {
+                onMouseDown={(e) => {
           if (redactionMode && onRedactionCreate) {
             e.preventDefault()
             const rect = e.currentTarget.getBoundingClientRect()
@@ -76,7 +82,7 @@ function ImageFallbackViewer({
             // Create visual redaction rectangle
             const redactionDiv = document.createElement('div')
             redactionDiv.style.position = 'absolute'
-            redactionDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.8)'
+            redactionDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.6)' // Red while drawing
             redactionDiv.style.border = '2px solid red'
             redactionDiv.style.pointerEvents = 'none'
             redactionDiv.style.zIndex = '1000'
@@ -84,55 +90,66 @@ function ImageFallbackViewer({
             redactionDiv.style.top = startY + 'px'
             redactionDiv.style.width = '0px'
             redactionDiv.style.height = '0px'
+            redactionDiv.id = 'temp-redaction'
 
             e.currentTarget.parentElement?.appendChild(redactionDiv)
+            console.log('Started redaction drawing at:', startX, startY)
             setCurrentRedaction(redactionDiv)
-          }
-        }}
-        onMouseMove={(e) => {
-          if (isDrawingRedaction && redactionStart && currentRedaction) {
-            const rect = e.currentTarget.getBoundingClientRect()
-            const currentX = e.clientX - rect.left
-            const currentY = e.clientY - rect.top
 
-            const left = Math.min(redactionStart.x, currentX)
-            const top = Math.min(redactionStart.y, currentY)
-            const width = Math.abs(currentX - redactionStart.x)
-            const height = Math.abs(currentY - redactionStart.y)
+            // Use global mouse events for reliable dragging
+            const handleGlobalMouseMove = (moveEvent: MouseEvent) => {
+              if (redactionDiv) {
+                const currentX = moveEvent.clientX - rect.left
+                const currentY = moveEvent.clientY - rect.top
 
-            currentRedaction.style.left = left + 'px'
-            currentRedaction.style.top = top + 'px'
-            currentRedaction.style.width = width + 'px'
-            currentRedaction.style.height = height + 'px'
-          }
-        }}
-        onMouseUp={(e) => {
-          if (isDrawingRedaction && redactionStart && currentRedaction && onRedactionCreate) {
-            const rect = e.currentTarget.getBoundingClientRect()
-            const endX = e.clientX - rect.left
-            const endY = e.clientY - rect.top
+                const left = Math.min(startX, currentX)
+                const top = Math.min(startY, currentY)
+                const width = Math.abs(currentX - startX)
+                const height = Math.abs(currentY - startY)
 
-            // Convert to image coordinates (300 DPI)
-            const imgX1 = (Math.min(redactionStart.x, endX) / rect.width) * 2400
-            const imgY1 = (Math.min(redactionStart.y, endY) / rect.height) * 3600
-            const imgX2 = (Math.max(redactionStart.x, endX) / rect.width) * 2400
-            const imgY2 = (Math.max(redactionStart.y, endY) / rect.height) * 3600
+                redactionDiv.style.left = left + 'px'
+                redactionDiv.style.top = top + 'px'
+                redactionDiv.style.width = width + 'px'
+                redactionDiv.style.height = height + 'px'
 
-            if (Math.abs(imgX2 - imgX1) > 10 && Math.abs(imgY2 - imgY1) > 10) {
-              onRedactionCreate({
-                page_number: pageNumber,
-                x_start: imgX1,
-                y_start: imgY1,
-                x_end: imgX2,
-                y_end: imgY2,
-                reason: 'User redaction'
-              })
+                console.log('Drawing redaction:', { left, top, width, height })
+              }
             }
 
-            currentRedaction.remove()
-            setCurrentRedaction(null)
-            setIsDrawingRedaction(false)
-            setRedactionStart(null)
+            const handleGlobalMouseUp = (upEvent: MouseEvent) => {
+              if (redactionDiv && onRedactionCreate) {
+                const endX = upEvent.clientX - rect.left
+                const endY = upEvent.clientY - rect.top
+
+                // Convert to image coordinates (300 DPI)
+                const imgX1 = (Math.min(startX, endX) / rect.width) * 2400
+                const imgY1 = (Math.min(startY, endY) / rect.height) * 3600
+                const imgX2 = (Math.max(startX, endX) / rect.width) * 2400
+                const imgY2 = (Math.max(startY, endY) / rect.height) * 3600
+
+                if (Math.abs(imgX2 - imgX1) > 10 && Math.abs(imgY2 - imgY1) > 10) {
+                  onRedactionCreate({
+                    page_number: pageNumber,
+                    x_start: imgX1,
+                    y_start: imgY1,
+                    x_end: imgX2,
+                    y_end: imgY2,
+                    reason: 'User redaction'
+                  })
+                }
+
+                redactionDiv.remove()
+                setCurrentRedaction(null)
+                setIsDrawingRedaction(false)
+                setRedactionStart(null)
+              }
+
+              document.removeEventListener('mousemove', handleGlobalMouseMove)
+              document.removeEventListener('mouseup', handleGlobalMouseUp)
+            }
+
+            document.addEventListener('mousemove', handleGlobalMouseMove)
+            document.addEventListener('mouseup', handleGlobalMouseUp)
           }
         }}
         style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
