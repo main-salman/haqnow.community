@@ -38,13 +38,20 @@ function ImageFallbackViewer({
   const [isDrawingRedaction, setIsDrawingRedaction] = useState(false)
   const [redactionStart, setRedactionStart] = useState<{x: number, y: number} | null>(null)
   const [currentRedaction, setCurrentRedaction] = useState<HTMLDivElement | null>(null)
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
+  const imgRef = useRef<HTMLImageElement>(null)
 
   return (
     <div className="relative w-full h-full min-h-[600px] bg-white">
       <img
+        ref={imgRef}
         src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
         alt={`Document ${documentId} page ${pageNumber + 1}`}
         className="w-full h-auto object-contain"
+        onLoad={(e) => {
+          const img = e.currentTarget
+          setImageSize({ width: img.offsetWidth, height: img.offsetHeight })
+        }}
         onClick={(e) => {
           if (commentMode && onAddCommentAt) {
             const rect = e.currentTarget.getBoundingClientRect()
@@ -131,16 +138,12 @@ function ImageFallbackViewer({
         style={{ cursor: commentMode ? 'crosshair' : redactionMode ? 'crosshair' : 'default' }}
       />
 
-      {/* Comment pins on image fallback */}
-      {comments
+            {/* Comment pins on image fallback */}
+      {imageSize.width > 0 && comments
         .filter(c => c.page_number === pageNumber)
         .map((comment) => {
-          const img = document.querySelector(`img[src*="/api/documents/${documentId}/thumbnail/${pageNumber}"]`) as HTMLImageElement
-          if (!img) return null
-
-          const rect = img.getBoundingClientRect()
-          const x = (comment.x_position / 2400) * rect.width
-          const y = (comment.y_position / 3600) * rect.height
+          const x = (comment.x_position / 2400) * imageSize.width
+          const y = (comment.y_position / 3600) * imageSize.height
 
           return (
             <div
@@ -156,24 +159,21 @@ function ImageFallbackViewer({
           )
         })}
 
-      {/* Redaction rectangles on image fallback */}
-      {redactions
+            {/* Redaction rectangles on image fallback */}
+      {imageSize.width > 0 && redactions
         .filter(r => r.page_number === pageNumber)
         .map((redaction) => {
-          const img = document.querySelector(`img[src*="/api/documents/${documentId}/thumbnail/${pageNumber}"]`) as HTMLImageElement
-          if (!img) return null
-
-          const rect = img.getBoundingClientRect()
-          const x = (Math.min(redaction.x_start, redaction.x_end) / 2400) * rect.width
-          const y = (Math.min(redaction.y_start, redaction.y_end) / 3600) * rect.height
-          const width = (Math.abs(redaction.x_end - redaction.x_start) / 2400) * rect.width
-          const height = (Math.abs(redaction.y_end - redaction.y_start) / 3600) * rect.height
+          const x = (Math.min(redaction.x_start, redaction.x_end) / 2400) * imageSize.width
+          const y = (Math.min(redaction.y_start, redaction.y_end) / 3600) * imageSize.height
+          const width = (Math.abs(redaction.x_end - redaction.x_start) / 2400) * imageSize.width
+          const height = (Math.abs(redaction.y_end - redaction.y_start) / 3600) * imageSize.height
 
           return (
             <div
               key={redaction.id}
-              className="absolute bg-black bg-opacity-85 border border-black z-10"
+              className="absolute bg-black bg-opacity-85 border border-black z-10 cursor-pointer"
               style={{ left: x, top: y, width, height }}
+              title={`Redaction: ${redaction.reason || 'No reason'}`}
             />
           )
         })}

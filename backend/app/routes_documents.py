@@ -454,22 +454,7 @@ async def delete_redaction(
     return {"success": True}
 
 
-@router.get("/{document_id}/redactions")
-async def list_redacted_pages(document_id: int, db: Session = Depends(get_db)):
-    """List all redacted pages for a document"""
-    # Verify document exists
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    redaction_service = get_redaction_service()
-    redacted_pages = await redaction_service.list_redacted_pages(document_id)
-
-    return {
-        "document_id": document_id,
-        "redacted_pages": redacted_pages,
-        "total_redacted_pages": len(redacted_pages),
-    }
+# Removed duplicate redaction endpoint - using the database one below
 
 
 @router.get("/{document_id}/pages/{page_number}/redactions/verify")
