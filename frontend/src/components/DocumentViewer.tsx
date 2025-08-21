@@ -642,17 +642,24 @@ export default function DocumentViewer({
           el.addEventListener('mousedown', (e) => {
             if (!id || (e.target as HTMLElement) === handle) return
             e.preventDefault()
+            e.stopPropagation()
+            // Disable redaction drawing when interacting with existing redaction
+            isDrawingRef.current = false
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
             const imgPt = item.viewportToImageCoordinates(pt)
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
+            console.log('🔧 Starting redaction drag:', id)
           })
           handle.addEventListener('mousedown', (e) => {
             if (!id) return
             e.stopPropagation()
             e.preventDefault()
+            // Disable redaction drawing when resizing
+            isDrawingRef.current = false
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
             const imgPt = item.viewportToImageCoordinates(pt)
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
+            console.log('🔧 Starting redaction resize:', id)
           })
 
           del.addEventListener('click', (e) => {

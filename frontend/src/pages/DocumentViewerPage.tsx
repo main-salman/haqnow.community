@@ -526,6 +526,8 @@ export default function DocumentViewerPage() {
 						comments={comments || []}
 						onRedactionUpdate={handleUpdateRedaction}
 						onRedactionDelete={handleDeleteRedaction}
+						showAnnotations={mode === 'comment' || mode === 'view'}
+						showRedactions={mode === 'redact' || mode === 'view'}
 					/>
 					{/* Debug info */}
 					{process.env.NODE_ENV === 'development' && (
