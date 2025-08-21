@@ -589,6 +589,11 @@ export default function DocumentViewer({
 
     console.log('🎯 RENDERING OVERLAYS:', { comments: comments.length, redactions: redactions.length, showAnnotations, showRedactions })
 
+    // Check viewer state
+    console.log('🔍 VIEWER STATE:', { hasViewer: !!viewer, tiledImageCount: viewer?.world?.getItemCount() || 0 })
+    const tiledImage = viewer?.world?.getItemAt(0)
+    console.log('🔍 TILED IMAGE:', { hasTiledImage: !!tiledImage, isReady: tiledImage?.getFullyLoaded?.() })
+
     // Redaction overlays
     if (showRedactions) {
       const pageRedactions = redactions.filter(r => r.page_number === pageNumber)
