@@ -335,15 +335,10 @@ export default function DocumentViewer({
   const [useImageFallback, setUseImageFallback] = useState(false)
 
   // Debug logging
-  console.log('🔍 DocumentViewer render:', {
-    documentId,
-    pageNumber,
-    commentMode,
-    redactionMode,
-    useImageFallback,
-    commentsCount: comments.length,
-    redactionsCount: redactions.length
-  })
+  // Reduced logging - only log when data changes
+  if (comments.length > 0 || redactions.length > 0) {
+    console.log('📊 Data loaded:', { comments: comments.length, redactions: redactions.length, mode: commentMode ? 'comment' : redactionMode ? 'redact' : 'view' })
+  }
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showAnnotations, setShowAnnotations] = useState(true)
   const [showRedactions, setShowRedactions] = useState(true)
@@ -561,20 +556,16 @@ export default function DocumentViewer({
   // Force overlay refresh when switching modes
   useEffect(() => {
     if (!viewer) return
-    console.log('🔍 Mode changed, forcing overlay refresh:', { redactionMode, commentMode })
+    console.log('🎯 MODE SWITCH:', { redactionMode, commentMode, commentsToShow: comments.length, redactionsToShow: redactions.length })
     // Small delay to ensure mode change is processed
     setTimeout(() => {
       setViewer(prev => prev) // Force overlay effect re-run
     }, 50)
-  }, [redactionMode, commentMode])
+  }, [redactionMode, commentMode, comments.length, redactions.length])
 
     // Render overlays for redactions and comments
   useEffect(() => {
-    console.log('🔍 OSD: Starting overlay rendering effect')
-    if (!viewer) {
-      console.log('🔍 OSD: No viewer, skipping overlays')
-      return
-    }
+    if (!viewer) return
 
     // Clear previous overlays
     overlaysRef.current.forEach(({ el }) => {
@@ -582,28 +573,14 @@ export default function DocumentViewer({
     })
     overlaysRef.current = []
 
-    const item = viewer.world.getItemAt(0)
+        const item = viewer.world.getItemAt(0)
     if (!item) {
-      console.log('🔍 OSD: No item in viewer, waiting for image load...')
-      // Wait for image to load and retry multiple times
-      const retryOverlays = (attempt = 1) => {
-        const retryItem = viewer.world.getItemAt(0)
-        if (retryItem) {
-          console.log('🔍 OSD: Item ready after retry attempt', attempt, ', rendering overlays')
-          setViewer(prev => prev) // Trigger effect again
-        } else if (attempt < 5) {
-          console.log('🔍 OSD: Retry attempt', attempt, 'failed, trying again...')
-          setTimeout(() => retryOverlays(attempt + 1), 200 * attempt)
-        } else {
-          console.log('🔍 OSD: All retry attempts failed, forcing fallback to ImageFallbackViewer')
-          setUseImageFallback(true)
-        }
-      }
-      setTimeout(() => retryOverlays(1), 200)
+      // Wait for image to load and retry
+      setTimeout(() => setViewer(prev => prev), 100)
       return
     }
 
-    console.log('🔍 OSD: Proceeding with overlay rendering')
+    console.log('🎯 RENDERING OVERLAYS:', { comments: comments.length, redactions: redactions.length, showAnnotations, showRedactions })
 
     // Redaction overlays
     if (showRedactions) {
@@ -689,12 +666,9 @@ export default function DocumentViewer({
     // Comment pin overlays
     if (showAnnotations) {
       const pageComments = comments.filter(c => c.page_number === pageNumber)
-      console.log('🔍 OSD: Rendering comment pins:', {
-        totalComments: comments.length,
-        pageComments: pageComments.length,
-        pageNumber,
-        showAnnotations
-      })
+      if (pageComments.length > 0) {
+        console.log('💬 COMMENT PINS:', pageComments.length, 'pins on page', pageNumber)
+      }
       pageComments.forEach((c) => {
           const wrapper = document.createElement('div')
           wrapper.style.pointerEvents = 'auto'
@@ -713,7 +687,7 @@ export default function DocumentViewer({
           pin.style.zIndex = '10000'
           pin.title = c.content || 'Comment'
 
-          console.log('🔍 OSD: Creating comment pin with enhanced styling')
+          // Enhanced styling applied
 
           const bubble = document.createElement('div')
           bubble.style.position = 'absolute'
@@ -752,18 +726,11 @@ export default function DocumentViewer({
             const y = c.y_position - size / 2
             rect = new OpenSeadragon.Rect(x, y, size, size)
           }
-          console.log('🔍 OSD: Adding comment overlay:', {
-            commentId: (c as any).id,
-            x: c.x_position,
-            y: c.y_position,
-            isPixel,
-            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-          })
-          try {
+                    try {
             viewer.addOverlay({ element: wrapper, location: rect })
-            console.log('🔍 OSD: Comment overlay added successfully')
+            console.log('✅ Comment pin added:', (c as any).id)
           } catch (err) {
-            console.error('🔍 OSD: Failed to add comment overlay:', err)
+            console.error('❌ Comment pin failed:', (c as any).id, err)
           }
           overlaysRef.current.push({ type: 'comment', el: wrapper })
         })

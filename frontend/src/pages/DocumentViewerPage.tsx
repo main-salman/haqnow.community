@@ -62,9 +62,9 @@ export default function DocumentViewerPage() {
 	const { data: comments = [] } = useQuery({
 		queryKey: ['document-comments', documentId],
 		queryFn: () => {
-			console.log('🔍 Fetching comments with auth:', { documentId, isAuthenticated })
+			console.log('📡 FETCHING COMMENTS:', { documentId, isAuthenticated })
 			return documentsApi.getComments(documentId).then(res => {
-				console.log('🔍 Comments API response:', res.data.comments?.length || 0)
+				console.log('📡 COMMENTS LOADED:', res.data.comments?.length || 0)
 				return res.data.comments || []
 			})
 		},
@@ -74,9 +74,9 @@ export default function DocumentViewerPage() {
 	const { data: redactions = [] } = useQuery({
 		queryKey: ['document-redactions', documentId],
 		queryFn: () => {
-			console.log('🔍 Fetching redactions with auth:', { documentId, isAuthenticated })
+			console.log('📡 FETCHING REDACTIONS:', { documentId, isAuthenticated })
 			return documentsApi.getRedactions(documentId).then(res => {
-				console.log('🔍 Redactions API response:', res.data.redactions?.length || 0)
+				console.log('📡 REDACTIONS LOADED:', res.data.redactions?.length || 0)
 				return res.data.redactions || []
 			})
 		},
@@ -126,13 +126,13 @@ export default function DocumentViewerPage() {
 
 			// Create a temporary link to trigger download
 			const downloadUrl = `/api/documents/${documentId}/file`
-			const link = document.createElement('a')
-			link.href = downloadUrl
-			link.download = document?.title || `document-${documentId}.pdf`
-			link.style.display = 'none'
-			document.body.appendChild(link)
-			link.click()
-			document.body.removeChild(link)
+			const anchor = window.document.createElement('a')
+			anchor.href = downloadUrl
+			anchor.download = document?.title || `document-${documentId}.pdf`
+			anchor.style.display = 'none'
+			window.document.body.appendChild(anchor)
+			anchor.click()
+			window.document.body.removeChild(anchor)
 
 			toast.success('Download started')
 		} catch (error) {
