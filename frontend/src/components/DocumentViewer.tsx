@@ -379,6 +379,8 @@ export default function DocumentViewer({
   const overlaysRef = useRef<{ type: 'redaction' | 'comment'; el: HTMLElement }[]>([])
   const draggingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
   const resizingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
+  // Suppress viewer canvas interactions while manipulating overlays to avoid creating new shapes
+  const suppressCanvasInteractionsRef = useRef(false)
 
   useEffect(() => {
     if (!viewerRef.current) return
@@ -431,9 +433,20 @@ export default function DocumentViewer({
 
     // Handle single clicks to add comments (when in comment mode)
     osdViewer.addHandler('canvas-click', (event: any) => {
+      if (suppressCanvasInteractionsRef.current) {
+        logWarn('Viewer', 'canvas-click suppressed due to overlay interaction')
+        return
+      }
       logEvent('Viewer', 'canvas-click', { commentMode, redactionMode })
       if (redactionMode) return
       if (!commentMode || !onAddCommentAt) return
+    // Also guard canvas-press used by redaction drawing (if configured elsewhere)
+    osdViewer.addHandler('canvas-press', () => {
+      if (suppressCanvasInteractionsRef.current) {
+        logWarn('Viewer', 'canvas-press suppressed due to overlay interaction')
+        return
+      }
+    })
 
       const item = osdViewer.world.getItemAt(0)
       if (!item) return
@@ -640,11 +653,12 @@ export default function DocumentViewer({
       console.log('🔲 REDACTION BOXES:', pageRedactions.length, 'boxes on page', pageNumber, 'showRedactions:', showRedactions)
       pageRedactions.forEach((r) => {
           const el = document.createElement('div')
-          el.style.background = 'rgba(0,0,0,0.85)'
-          el.style.border = '1px solid rgba(0,0,0,0.9)'
+          el.style.background = 'rgba(0,0,0,0.9)'
+          el.style.border = '1px solid rgba(0,0,0,1)'
           el.style.pointerEvents = 'auto'
           el.style.cursor = 'move'
           el.style.position = 'relative'
+          el.style.zIndex = '10000'
           const xRaw = Math.min(r.x_start, r.x_end)
           const yRaw = Math.min(r.y_start, r.y_end)
           const wRaw = Math.abs(r.x_end - r.x_start)
@@ -671,6 +685,7 @@ export default function DocumentViewer({
           handle.style.background = '#ffffff'
           handle.style.border = '1px solid #000000'
           handle.style.cursor = 'nwse-resize'
+          handle.style.zIndex = '10002'
           el.appendChild(handle)
 
           // Add delete toolbar (top-right)
@@ -689,7 +704,7 @@ export default function DocumentViewer({
           del.style.fontSize = '14px'
           del.style.fontWeight = 'bold'
           del.style.borderRadius = '50%'
-          del.style.zIndex = '10001'
+          del.style.zIndex = '10003'
           del.style.display = 'flex'
           del.style.alignItems = 'center'
           del.style.justifyContent = 'center'
@@ -706,6 +721,7 @@ export default function DocumentViewer({
             e.stopPropagation()
             // Disable redaction drawing when interacting with existing redaction
             isDrawingRef.current = false
+            suppressCanvasInteractionsRef.current = true
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
@@ -717,6 +733,7 @@ export default function DocumentViewer({
             e.preventDefault()
             // Disable redaction drawing when resizing
             isDrawingRef.current = false
+            suppressCanvasInteractionsRef.current = true
 
             // Disable OpenSeadragon mouse tracking during resize
             if (viewer) {
@@ -869,6 +886,7 @@ export default function DocumentViewer({
       if (viewer) {
         viewer.setMouseNavEnabled(true)
       }
+      suppressCanvasInteractionsRef.current = false
       draggingRef.current = null
       resizingRef.current = null
     }
