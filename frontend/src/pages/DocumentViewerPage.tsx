@@ -46,6 +46,7 @@ export default function DocumentViewerPage() {
 	const [showPins, setShowPins] = useState(true)
 	const [hasRedactionLock, setHasRedactionLock] = useState(false)
 	const [deletingComments, setDeletingComments] = useState<Set<number>>(new Set())
+	const [deletingRedactions, setDeletingRedactions] = useState<Set<number>>(new Set())
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -89,6 +90,7 @@ export default function DocumentViewerPage() {
 	const handleUpdateRedaction = async (r: { id?: number; page_number: number; x_start: number; y_start: number; x_end: number; y_end: number; reason?: string }) => {
 		try {
 			if (!r.id) return
+			console.log('🔧 Updating redaction:', r.id, 'with coordinates:', { x_start: r.x_start, y_start: r.y_start, x_end: r.x_end, y_end: r.y_end })
 			await documentsApi.updateRedaction(documentId, r.id, {
 				x_start: r.x_start,
 				y_start: r.y_start,
@@ -100,19 +102,41 @@ export default function DocumentViewerPage() {
 			if (socketRef.current) {
 				socketRef.current.emit('add_redaction', { document_id: documentId, redaction: r })
 			}
-		} catch {}
+		} catch (error: any) {
+			console.error('❌ Failed to update redaction:', error)
+		}
 	}
 
 	const handleDeleteRedaction = async (redactionId: number) => {
+		// Prevent multiple rapid clicks
+		if (deletingRedactions.has(redactionId)) return
+
+		setDeletingRedactions(prev => new Set(prev).add(redactionId))
+
 		try {
+			console.log('🗑️ Deleting redaction:', redactionId)
 			await documentsApi.deleteRedaction(documentId, redactionId)
 			queryClient.invalidateQueries(['document-redactions', documentId])
 			if (socketRef.current) {
 				socketRef.current.emit('delete_redaction', { document_id: documentId, redaction_id: String(redactionId) })
 			}
 			toast.success('Redaction deleted')
-		} catch (e) {
-			toast.error('Failed to delete redaction')
+		} catch (error: any) {
+			console.error('❌ Failed to delete redaction:', error)
+			// Handle 404 gracefully - redaction might have been already deleted
+			if (error?.response?.status === 404) {
+				console.log('Redaction already deleted, refreshing redactions')
+				queryClient.invalidateQueries(['document-redactions', documentId])
+				toast.success('Redaction deleted')
+			} else {
+				toast.error('Failed to delete redaction')
+			}
+		} finally {
+			setDeletingRedactions(prev => {
+				const newSet = new Set(prev)
+				newSet.delete(redactionId)
+				return newSet
+			})
 		}
 	}
 

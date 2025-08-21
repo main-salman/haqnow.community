@@ -663,7 +663,7 @@ export default function DocumentViewer({
           const id = (r as any).id as number | undefined
           const getImageRect = () => ({ x1: xRaw, y1: yRaw, x2: xRaw + wRaw, y2: yRaw + hRaw })
           el.addEventListener('mousedown', (e) => {
-            if (!id || (e.target as HTMLElement) === handle) return
+            if (!id || (e.target as HTMLElement) === handle || (e.target as HTMLElement) === del) return
             e.preventDefault()
             e.stopPropagation()
             // Disable redaction drawing when interacting with existing redaction
@@ -671,7 +671,7 @@ export default function DocumentViewer({
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
-            console.log('🔧 Starting redaction drag:', id)
+            console.log('🔧 Starting redaction drag:', id, 'at', imgPt)
           })
           handle.addEventListener('mousedown', (e) => {
             if (!id) return
@@ -682,13 +682,17 @@ export default function DocumentViewer({
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
-            console.log('🔧 Starting redaction resize:', id)
+            console.log('🔧 Starting redaction resize:', id, 'at', imgPt)
           })
 
           del.addEventListener('click', (e) => {
             e.stopPropagation()
+            e.preventDefault()
             if (!id) return
-            onRedactionDelete?.(id)
+            console.log('🗑️ REDACTION DELETE CLICKED:', id)
+            if (confirm('Delete this redaction?')) {
+              onRedactionDelete?.(id)
+            }
           })
         })
     }
@@ -798,6 +802,7 @@ export default function DocumentViewer({
         const y1 = orig.y1 + dy
         const x2 = orig.x2 + dx
         const y2 = orig.y2 + dy
+        console.log('🔧 Dragging redaction:', id, 'to', { x1, y1, x2, y2 })
         onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
         draggingRef.current = { id, startX, startY, orig }
       } else if (resizingRef.current) {
@@ -810,6 +815,7 @@ export default function DocumentViewer({
         const y1 = orig.y1
         const x2 = Math.max(x1 + 2, orig.x2 + dx)
         const y2 = Math.max(y1 + 2, orig.y2 + dy)
+        console.log('🔧 Resizing redaction:', id, 'to', { x1, y1, x2, y2 })
         onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
         resizingRef.current = { id, startX, startY, orig }
       }
