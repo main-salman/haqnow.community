@@ -558,6 +558,16 @@ export default function DocumentViewer({
     }
   }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode, commentMode])
 
+  // Force overlay refresh when switching modes
+  useEffect(() => {
+    if (!viewer) return
+    console.log('🔍 Mode changed, forcing overlay refresh:', { redactionMode, commentMode })
+    // Small delay to ensure mode change is processed
+    setTimeout(() => {
+      setViewer(prev => prev) // Force overlay effect re-run
+    }, 50)
+  }, [redactionMode, commentMode])
+
     // Render overlays for redactions and comments
   useEffect(() => {
     console.log('🔍 OSD: Starting overlay rendering effect')

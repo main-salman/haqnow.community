@@ -642,6 +642,57 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/{document_id}/file")
+async def get_document_file(document_id: int, db: Session = Depends(get_db)):
+    """Serve the original document file for download"""
+    import os
+
+    from fastapi.responses import FileResponse, Response
+
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Try to serve from S3 first
+    try:
+        from .s3_client import download_from_s3
+
+        settings = get_settings()
+
+        # Try to download from S3 originals bucket
+        file_key = f"{document_id}/{document.title}"
+        file_data = download_from_s3(settings.s3_bucket_originals, file_key)
+
+        # Determine content type based on file extension
+        content_type = "application/pdf"
+        if document.title.lower().endswith((".png", ".jpg", ".jpeg")):
+            content_type = f"image/{document.title.split('.')[-1].lower()}"
+        elif document.title.lower().endswith(".txt"):
+            content_type = "text/plain"
+
+        return Response(
+            content=file_data,
+            media_type=content_type,
+            headers={"Content-Disposition": f'attachment; filename="{document.title}"'},
+        )
+    except Exception as e:
+        print(f"Failed to download from S3: {e}")
+        pass
+
+    # Fallback to local file (shared volume)
+    local_path = f"/app/uploads/{document_id}_{document.title}"
+    if os.path.exists(local_path):
+        return FileResponse(
+            path=local_path,
+            filename=document.title,
+            media_type="application/octet-stream",
+        )
+
+    # If file not found anywhere
+    raise HTTPException(status_code=404, detail="Document file not found")
+
+
 @router.post("/{document_id}/comments")
 async def add_comment(
     document_id: int,

@@ -108,10 +108,21 @@ export default function DocumentViewerPage() {
 	// Handlers for functionality
 	const handleDownload = async () => {
 		try {
-			const response = await documentsApi.download(documentId)
+			console.log('🔍 Starting download for document', documentId)
+
+			// Create a temporary link to trigger download
+			const downloadUrl = `/api/documents/${documentId}/file`
+			const link = document.createElement('a')
+			link.href = downloadUrl
+			link.download = document?.title || `document-${documentId}.pdf`
+			link.style.display = 'none'
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+
 			toast.success('Download started')
-			// In production, this would trigger actual file download
 		} catch (error) {
+			console.error('Download error:', error)
 			toast.error('Download failed')
 		}
 	}
