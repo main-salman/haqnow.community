@@ -180,7 +180,8 @@ This will start:
 The local environment runs compute (API, Celery, frontend) on your machine while using Exoscale-managed services for data.
 
 1. Configure `.env` with your Exoscale credentials:
-```bash
+
+```env
 # Postgres (Exoscale Managed DB)
 DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@HOST:PORT/DBNAME
 

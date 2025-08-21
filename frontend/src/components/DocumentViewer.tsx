@@ -604,6 +604,11 @@ export default function DocumentViewer({
       osdViewer.zoomPerScroll = 1.0
 
       osdViewer.addHandler('canvas-press', (event: any) => {
+        // Respect overlay interaction suppression to avoid spawning new rectangles while resizing/moving
+        if (suppressCanvasInteractionsRef.current) {
+          logWarn('Viewer', 'canvas-press suppressed due to overlay interaction')
+          return
+        }
         console.log('🎯 OSD canvas-press: redactionMode=', redactionMode, 'isDrawing=', isDrawingRef.current)
         if (redactionMode && !isDrawingRef.current) {
           const item = osdViewer.world.getItemAt(0)
@@ -860,6 +865,8 @@ export default function DocumentViewer({
           del.addEventListener('click', (e) => {
             e.stopPropagation()
             e.preventDefault()
+            // Suppress OSD interactions during delete click
+            suppressCanvasInteractionsRef.current = true
             if (!id) return
             logEvent('Redactions', 'Delete clicked', { id })
             if (confirm('Delete this redaction?')) {

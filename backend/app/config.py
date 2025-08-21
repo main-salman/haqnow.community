@@ -60,5 +60,12 @@ class Settings:
 
 
 @lru_cache
-def get_settings() -> Settings:
+def _get_settings_cached() -> Settings:
     return Settings()
+
+
+def get_settings() -> Settings:
+    # Avoid caching in pytest to prevent cross-test contamination of env-derived values
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return Settings()
+    return _get_settings_cached()
