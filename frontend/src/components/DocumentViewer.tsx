@@ -670,6 +670,8 @@ export default function DocumentViewer({
       console.log('🔲 REDACTION BOXES:', pageRedactions.length, 'boxes on page', pageNumber, 'showRedactions:', showRedactions)
       pageRedactions.forEach((r) => {
           const el = document.createElement('div')
+          el.setAttribute('data-testid', 'redaction-overlay')
+          el.className = (el.className ? el.className + ' ' : '') + 'redaction-rectangle'
           el.style.background = 'rgba(0,0,0,0.9)'
           el.style.border = '1px solid rgba(0,0,0,1)'
           el.style.pointerEvents = 'auto'
@@ -694,6 +696,7 @@ export default function DocumentViewer({
 
           // Add resize handle (bottom-right)
           const handle = document.createElement('div')
+          handle.setAttribute('data-testid', 'redaction-resize-handle')
           handle.style.position = 'absolute'
           handle.style.width = '10px'
           handle.style.height = '10px'
@@ -707,6 +710,7 @@ export default function DocumentViewer({
 
           // Add delete toolbar (top-right)
           const del = document.createElement('button')
+          del.setAttribute('data-testid', 'redaction-delete')
           del.textContent = '×'
           del.title = 'Delete redaction'
           del.style.position = 'absolute'

@@ -20,40 +20,67 @@ async def test_redaction_draw_move_resize_delete():
             await browser.close()
             pytest.skip("Viewer not available")
 
-        # Enter redaction mode via toolbar on page
-        # Fallback: click the redaction tool in top app toolbar if present
+        # Enter redaction mode via toolbar on page (DocumentViewerPage buttons)
         try:
-            await page.click("[title='Redact']", timeout=3000)
+            await page.click("button[title='Redact mode']", timeout=3000)
         except Exception:
-            pass
+            # Older selector fallback
+            try:
+                await page.click("[title='Redact']", timeout=3000)
+            except Exception:
+                pass
 
         viewer = await page.query_selector(".document-viewer")
         if viewer is None:
             await browser.close()
             pytest.skip("Viewer component not found")
 
-        # Draw rectangle
-        box = await viewer.bounding_box()
-        start_x = box["x"] + 100
-        start_y = box["y"] + 120
-        await page.mouse.move(start_x, start_y)
-        await page.mouse.down()
-        await page.mouse.move(start_x + 120, start_y + 80)
-        await page.mouse.up()
+        # If no redaction overlays exist, draw one
+        overlays = await page.query_selector_all("[data-testid='redaction-overlay']")
+        if not overlays:
+            box = await viewer.bounding_box()
+            start_x = box["x"] + 150
+            start_y = box["y"] + 150
+            await page.mouse.move(start_x, start_y)
+            await page.mouse.down()
+            await page.mouse.move(start_x + 160, start_y + 110)
+            await page.mouse.up()
+            # wait for overlay to show
+            await page.wait_for_selector(
+                "[data-testid='redaction-overlay']", timeout=5000
+            )
 
-        # Try to drag (move) the rectangle by grabbing near center
-        await page.mouse.move(start_x + 60, start_y + 40)
-        await page.mouse.down()
-        await page.mouse.move(start_x + 80, start_y + 60)
-        await page.mouse.up()
+        # Move the first redaction by dragging its center
+        first_overlay = await page.query_selector("[data-testid='redaction-overlay']")
+        if first_overlay:
+            obox = await first_overlay.bounding_box()
+            cx = obox["x"] + obox["width"] / 2
+            cy = obox["y"] + obox["height"] / 2
+            await page.mouse.move(cx, cy)
+            await page.mouse.down()
+            await page.mouse.move(cx + 20, cy + 20)
+            await page.mouse.up()
 
-        # Try to click delete button if visible (×)
-        try:
-            await page.click("text=Delete", timeout=1000)
-        except Exception:
-            # If a small × button exists, attempt to click it by querying a button inside overlay
+        # Resize using handle
+        resize_handle = await page.query_selector(
+            "[data-testid='redaction-resize-handle']"
+        )
+        if resize_handle:
+            hbox = await resize_handle.bounding_box()
+            hx = hbox["x"] + hbox["width"] / 2
+            hy = hbox["y"] + hbox["height"] / 2
+            await page.mouse.move(hx, hy)
+            await page.mouse.down()
+            await page.mouse.move(hx + 25, hy + 30)
+            await page.mouse.up()
+
+        # Delete via the overlay delete button
+        delete_btn = await page.query_selector("[data-testid='redaction-delete']")
+        if delete_btn:
+            await delete_btn.click()
+            # Confirm dialog
             try:
-                await page.click("button:has-text('×')", timeout=1000)
+                await page.on("dialog", lambda dialog: dialog.accept())
             except Exception:
                 pass
 
