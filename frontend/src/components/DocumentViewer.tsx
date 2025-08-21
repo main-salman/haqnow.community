@@ -582,24 +582,14 @@ export default function DocumentViewer({
 
     console.log('🎯 RENDERING OVERLAYS:', { comments: comments.length, redactions: redactions.length, showAnnotations, showRedactions })
 
-    // Check viewer state and wait for tiled image if needed
+        // Check viewer state and wait for tiled image if needed
     const tiledImage = viewer.world.getItemAt(0)
     if (!tiledImage) {
-      console.log('⏳ WAITING FOR TILED IMAGE - retrying in 100ms')
-      // Use a ref to prevent infinite loops
-      const retryCount = overlaysRef.current.length // Use array length as retry counter
-      if (retryCount < 50) { // Max 5 seconds of retries
-        setTimeout(() => {
-          // Force overlay refresh by updating viewer state
-          setViewer(prev => prev)
-        }, 100)
-      } else {
-        console.error('❌ TILED IMAGE FAILED TO LOAD after 5 seconds')
-      }
-      return
+      console.log('⏳ WAITING FOR TILED IMAGE - using fallback rendering')
+      // Don't return - continue with fallback rendering without coordinate conversion
+    } else {
+      console.log('✅ TILED IMAGE READY - rendering overlays with coordinate conversion')
     }
-
-    console.log('✅ TILED IMAGE READY - rendering overlays')
 
     // Redaction overlays
     if (showRedactions) {
@@ -618,11 +608,12 @@ export default function DocumentViewer({
           const hRaw = Math.abs(r.y_end - r.y_start)
           let rect: OpenSeadragon.Rect
           const isPixel = xRaw > 1 || yRaw > 1 || wRaw > 1 || hRaw > 1
-          if (isPixel) {
+          if (isPixel && tiledImage) {
             const imageRect = new OpenSeadragon.Rect(xRaw, yRaw, wRaw, hRaw)
             rect = tiledImage.imageToViewportRectangle(imageRect)
           } else {
-            rect = new OpenSeadragon.Rect(xRaw, yRaw, wRaw, hRaw)
+            // Fallback: treat coordinates as normalized viewport coordinates
+            rect = new OpenSeadragon.Rect(xRaw / 3000, yRaw / 3000, wRaw / 3000, hRaw / 3000)
           }
           try { viewer.addOverlay({ element: el, location: rect }) } catch {}
           overlaysRef.current.push({ type: 'redaction', el })
@@ -665,7 +656,7 @@ export default function DocumentViewer({
             // Disable redaction drawing when interacting with existing redaction
             isDrawingRef.current = false
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
-            const imgPt = tiledImage.viewportToImageCoordinates(pt)
+            const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
             console.log('🔧 Starting redaction drag:', id)
           })
@@ -676,7 +667,7 @@ export default function DocumentViewer({
             // Disable redaction drawing when resizing
             isDrawingRef.current = false
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
-            const imgPt = tiledImage.viewportToImageCoordinates(pt)
+            const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
             console.log('🔧 Starting redaction resize:', id)
           })
@@ -740,14 +731,15 @@ export default function DocumentViewer({
 
           const isPixel = c.x_position > 1 || c.y_position > 1
           let rect: OpenSeadragon.Rect
-          if (isPixel) {
+          if (isPixel && tiledImage) {
             const sizePx = 12
             const imageRect = new OpenSeadragon.Rect(c.x_position - sizePx / 2, c.y_position - sizePx / 2, sizePx, sizePx)
             rect = tiledImage.imageToViewportRectangle(imageRect)
           } else {
+            // Fallback: treat coordinates as normalized viewport coordinates
             const size = 0.012
-            const x = c.x_position - size / 2
-            const y = c.y_position - size / 2
+            const x = (c.x_position / 3000) - size / 2
+            const y = (c.y_position / 3000) - size / 2
             rect = new OpenSeadragon.Rect(x, y, size, size)
           }
                     try {
@@ -783,7 +775,7 @@ export default function DocumentViewer({
       if (draggingRef.current) {
         const { id, startX, startY, orig } = draggingRef.current
         const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
-        const img = tiledImageMove.viewportToImageCoordinates(vp)
+        const img = tiledImageMove ? tiledImageMove.viewportToImageCoordinates(vp) : { x: vp.x * 3000, y: vp.y * 3000 }
         const dx = img.x - startX
         const dy = img.y - startY
         const x1 = orig.x1 + dx
@@ -795,7 +787,7 @@ export default function DocumentViewer({
       } else if (resizingRef.current) {
         const { id, startX, startY, orig } = resizingRef.current
         const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
-        const img = tiledImageMove.viewportToImageCoordinates(vp)
+        const img = tiledImageMove ? tiledImageMove.viewportToImageCoordinates(vp) : { x: vp.x * 3000, y: vp.y * 3000 }
         const dx = img.x - startX
         const dy = img.y - startY
         const x1 = orig.x1
