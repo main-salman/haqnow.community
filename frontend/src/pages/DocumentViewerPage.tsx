@@ -39,24 +39,8 @@ export default function DocumentViewerPage() {
 	const [shareEveryone, setShareEveryone] = useState(false)
 	const socketRef = useRef<Socket | null>(null)
 	const markersLayerRef = useRef<HTMLDivElement | null>(null)
-	const [liveComments, setLiveComments] = useState<any[]>([])
+		const [liveComments, setLiveComments] = useState<any[]>([])
 	const [liveRedactions, setLiveRedactions] = useState<any[]>([])
-
-	// Initialize live data from API data
-	useEffect(() => {
-		console.log('🔍 Initializing live data:', {
-			apiComments: comments?.length || 0,
-			apiRedactions: redactions?.length || 0,
-			liveComments: liveComments.length,
-			liveRedactions: liveRedactions.length
-		})
-		if (comments && liveComments.length === 0) {
-			setLiveComments(comments)
-		}
-		if (redactions && liveRedactions.length === 0) {
-			setLiveRedactions(redactions)
-		}
-	}, [comments, redactions])
 	const [showPins, setShowPins] = useState(true)
 	const [hasRedactionLock, setHasRedactionLock] = useState(false)
 
@@ -226,6 +210,22 @@ export default function DocumentViewerPage() {
 			toast.error('Failed to add comment')
 		}
 	}
+
+	// Initialize live data from API data
+	useEffect(() => {
+		console.log('🔍 Initializing live data:', {
+			apiComments: comments?.length || 0,
+			apiRedactions: redactions?.length || 0,
+			liveComments: liveComments.length,
+			liveRedactions: liveRedactions.length
+		})
+		if (comments && liveComments.length === 0) {
+			setLiveComments(comments)
+		}
+		if (redactions && liveRedactions.length === 0) {
+			setLiveRedactions(redactions)
+		}
+	}, [comments, redactions])
 
 	useEffect(() => {
 		// connect to socket server
