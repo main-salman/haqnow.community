@@ -386,6 +386,9 @@ export default function DocumentViewer({
   const resizingRef = useRef<{ id: number; startX: number; startY: number; orig: { x1: number; y1: number; x2: number; y2: number } } | null>(null)
   // Suppress viewer canvas interactions while manipulating overlays to avoid creating new shapes
   const suppressCanvasInteractionsRef = useRef(false)
+  // Track live overlay element and last proposed image-rect during drag/resize for single API update on mouseup
+  const activeOverlayElRef = useRef<HTMLElement | null>(null)
+  const pendingUpdateRef = useRef<{ id: number; x1: number; y1: number; x2: number; y2: number } | null>(null)
 
   useEffect(() => {
     if (!viewerRef.current) return
@@ -736,9 +739,11 @@ export default function DocumentViewer({
             // Disable redaction drawing when interacting with existing redaction
             isDrawingRef.current = false
             suppressCanvasInteractionsRef.current = true
+            if (viewer) viewer.setMouseNavEnabled(false)
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
+            activeOverlayElRef.current = el
             logEvent('Redactions', 'Start drag', { id, imgX: imgPt.x, imgY: imgPt.y })
           })
           handle.addEventListener('mousedown', (e) => {
@@ -757,6 +762,7 @@ export default function DocumentViewer({
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
+            activeOverlayElRef.current = el
             logEvent('Redactions', 'Start resize', { id, imgX: imgPt.x, imgY: imgPt.y })
           })
 
@@ -877,8 +883,14 @@ export default function DocumentViewer({
         const y1 = orig.y1 + dy
         const x2 = orig.x2 + dx
         const y2 = orig.y2 + dy
-        console.log('🔧 Dragging redaction:', id, 'to', { x1, y1, x2, y2 })
-        onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
+        // Live-update overlay position visually without API call
+        try {
+          const rect = tiledImageMove.imageToViewportRectangle(new OpenSeadragon.Rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)))
+          if (activeOverlayElRef.current) {
+            viewer.updateOverlay(activeOverlayElRef.current, rect)
+          }
+        } catch {}
+        pendingUpdateRef.current = { id, x1: Math.min(x1, x2), y1: Math.min(y1, y2), x2: Math.max(x1, x2), y2: Math.max(y1, y2) }
         draggingRef.current = { id, startX, startY, orig }
       } else if (resizingRef.current) {
         const { id, startX, startY, orig } = resizingRef.current
@@ -890,8 +902,13 @@ export default function DocumentViewer({
         const y1 = orig.y1
         const x2 = Math.max(x1 + 2, orig.x2 + dx)
         const y2 = Math.max(y1 + 2, orig.y2 + dy)
-        console.log('🔧 Resizing redaction:', id, 'to', { x1, y1, x2, y2 })
-        onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
+        try {
+          const rect = tiledImageMove.imageToViewportRectangle(new OpenSeadragon.Rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)))
+          if (activeOverlayElRef.current) {
+            viewer.updateOverlay(activeOverlayElRef.current, rect)
+          }
+        } catch {}
+        pendingUpdateRef.current = { id, x1: Math.min(x1, x2), y1: Math.min(y1, y2), x2: Math.max(x1, x2), y2: Math.max(y1, y2) }
         resizingRef.current = { id, startX, startY, orig }
       }
     }
@@ -901,6 +918,13 @@ export default function DocumentViewer({
         viewer.setMouseNavEnabled(true)
       }
       suppressCanvasInteractionsRef.current = false
+      // Commit pending update once on mouseup
+      if (pendingUpdateRef.current) {
+        const { id, x1, y1, x2, y2 } = pendingUpdateRef.current
+        onRedactionUpdate?.({ id, page_number: pageNumber, x_start: x1, y_start: y1, x_end: x2, y_end: y2 })
+        pendingUpdateRef.current = null
+      }
+      activeOverlayElRef.current = null
       draggingRef.current = null
       resizingRef.current = null
     }
