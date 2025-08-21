@@ -175,6 +175,37 @@ This will start:
 - Backend API server on http://localhost:8000
 - Frontend development server on http://localhost:3000
 
+### Local Development with Exoscale DB and SOS (fast compute locally)
+
+The local environment runs compute (API, Celery, frontend) on your machine while using Exoscale-managed services for data.
+
+1. Configure `.env` with your Exoscale credentials:
+```bash
+# Postgres (Exoscale Managed DB)
+DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@HOST:PORT/DBNAME
+
+# Exoscale SOS (S3-compatible)
+EXOSCALE_S3_ACCESS_KEY=...
+EXOSCALE_S3_SECRET_KEY=...
+S3_ENDPOINT=https://sos-<region>.exo.io
+S3_REGION=ch-gva-2
+S3_BUCKET_ORIGINALS=originals
+S3_BUCKET_THUMBNAILS=thumbnails
+S3_BUCKET_TILES=tiles
+S3_BUCKET_OCR=ocr
+S3_BUCKET_EXPORTS=exports
+
+# Redis/Ollama (local)
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+2. Run `./start-local.sh`.
+
+The script will source `.env`, start Redis and Ollama via Docker, then run the backend and Celery locally against your Exoscale Postgres and SOS. If SOS is temporarily unavailable, processing tasks fall back to local filesystem paths under `/srv/processed` and `/app/uploads`.
+
 4. Stop all services:
 ```bash
 ./stop-local.sh

@@ -21,6 +21,8 @@ function ImageFallbackViewer({
   redactionMode,
   onAddCommentAt,
   onRedactionCreate,
+  onRedactionUpdate,
+  onRedactionDelete,
   comments,
   redactions
 }: {
@@ -30,6 +32,8 @@ function ImageFallbackViewer({
   redactionMode: boolean
   onAddCommentAt?: (x: number, y: number, page: number) => void
   onRedactionCreate?: (redaction: any) => void
+  onRedactionUpdate?: (redaction: { id: number; page_number: number; x_start: number; y_start: number; x_end: number; y_end: number }) => void
+  onRedactionDelete?: (redactionId: number) => void
   comments: any[]
   redactions: any[]
 }) {
@@ -41,6 +45,7 @@ function ImageFallbackViewer({
   const [currentRedaction, setCurrentRedaction] = useState<HTMLDivElement | null>(null)
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const imgRef = useRef<HTMLImageElement>(null)
+  const resizingRef = useRef<{ id: number; startX: number; startY: number; orig: { x: number; y: number; w: number; h: number } } | null>(null)
 
   // Debug logging
   console.log('🔍 ImageFallbackViewer render:', {
@@ -209,10 +214,92 @@ function ImageFallbackViewer({
           return (
             <div
               key={redaction.id}
-              className="absolute bg-black bg-opacity-90 border border-red-500 z-15 cursor-pointer"
+              className="absolute bg-black bg-opacity-90 border border-red-500 z-15 cursor-move"
               style={{ left: x, top: y, width, height }}
               title={`Redaction: ${redaction.reason || 'No reason'}`}
-            />
+              data-testid="redaction-overlay"
+            >
+              <button
+                type="button"
+                data-testid="redaction-delete"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (redaction.id && onRedactionDelete) {
+                    if (confirm('Delete this redaction?')) onRedactionDelete(redaction.id)
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  right: -2,
+                  top: -2,
+                  width: 20,
+                  height: 20,
+                  background: '#ef4444',
+                  color: 'white',
+                  border: '2px solid white',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  zIndex: 10003,
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                title="Delete redaction"
+              >
+                ×
+              </button>
+
+              <div
+                data-testid="redaction-resize-handle"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const parent = e.currentTarget.parentElement as HTMLDivElement
+                  const rect = parent.getBoundingClientRect()
+                  resizingRef.current = {
+                    id: redaction.id!,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    orig: { x: rect.left, y: rect.top, w: rect.width, h: rect.height }
+                  }
+                  const handleMove = (me: MouseEvent) => {
+                    if (!resizingRef.current) return
+                    const dx = me.clientX - resizingRef.current.startX
+                    const dy = me.clientY - resizingRef.current.startY
+                    parent.style.width = Math.max(2, resizingRef.current.orig.w + dx) + 'px'
+                    parent.style.height = Math.max(2, resizingRef.current.orig.h + dy) + 'px'
+                  }
+                  const handleUp = () => {
+                    const data = resizingRef.current
+                    resizingRef.current = null
+                    document.removeEventListener('mousemove', handleMove)
+                    document.removeEventListener('mouseup', handleUp)
+                    if (!data || !onRedactionUpdate) return
+                    const img = imgRef.current!
+                    const imgRect = img.getBoundingClientRect()
+                    const parentRect = parent.getBoundingClientRect()
+                    const imgX1 = ((parentRect.left - imgRect.left) / imgRect.width) * 2400
+                    const imgY1 = ((parentRect.top - imgRect.top) / imgRect.height) * 3600
+                    const imgX2 = ((parentRect.right - imgRect.left) / imgRect.width) * 2400
+                    const imgY2 = ((parentRect.bottom - imgRect.top) / imgRect.height) * 3600
+                    onRedactionUpdate({ id: redaction.id!, page_number: pageNumber, x_start: imgX1, y_start: imgY1, x_end: imgX2, y_end: imgY2 })
+                  }
+                  document.addEventListener('mousemove', handleMove)
+                  document.addEventListener('mouseup', handleUp)
+                }}
+                style={{
+                  position: 'absolute',
+                  width: 10,
+                  height: 10,
+                  right: 0,
+                  bottom: 0,
+                  background: '#ffffff',
+                  border: '1px solid #000000',
+                  cursor: 'nwse-resize',
+                  zIndex: 10002,
+                }}
+              />
+            </div>
           )
         })}
 
@@ -1009,6 +1096,8 @@ export default function DocumentViewer({
           redactionMode={redactionMode}
           onAddCommentAt={onAddCommentAt}
           onRedactionCreate={onRedactionCreate}
+          onRedactionUpdate={onRedactionUpdate}
+          onRedactionDelete={onRedactionDelete}
           comments={comments}
           redactions={redactions}
         />

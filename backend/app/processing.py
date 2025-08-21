@@ -9,14 +9,9 @@ import pytesseract
 from PIL import Image, ImageDraw
 
 from .config import get_settings
-from .s3_client import get_s3_client, upload_to_s3
+from .s3_client import upload_to_s3
 
-
-def download_from_s3(bucket: str, key: str) -> bytes:
-    """Download file from S3/SOS"""
-    s3_client = get_s3_client()
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    return response["Body"].read()
+## S3 download helper moved to app.s3_client.download_from_s3 to avoid duplication
 
 
 def rasterize_pdf_pages(pdf_data: bytes, dpi: int = 300) -> List[Tuple[int, bytes]]:

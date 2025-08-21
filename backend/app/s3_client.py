@@ -6,7 +6,12 @@ from .config import get_settings
 
 def get_s3_client():
     settings = get_settings()
-    if not settings.s3_access_key or not settings.s3_secret_key:
+    # Require explicit Exoscale SOS configuration for safety in tests/local dev
+    if (
+        (not settings.s3_access_key)
+        or (not settings.s3_secret_key)
+        or (not settings.s3_endpoint)
+    ):
         raise ValueError("S3 credentials not configured")
 
     return boto3.client(
@@ -51,3 +56,10 @@ def upload_to_s3(
     """Upload file to S3/SOS"""
     s3_client = get_s3_client()
     s3_client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
+
+
+def download_from_s3(bucket: str, key: str) -> bytes:
+    """Download file from S3/SOS"""
+    s3_client = get_s3_client()
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    return response["Body"].read()

@@ -8,7 +8,6 @@ from .config import get_settings
 from .db import SessionLocal
 from .models import Document, ProcessingJob
 from .processing import (
-    download_from_s3,
     extract_text_from_image,
     generate_thumbnail,
     generate_tiles,
@@ -16,7 +15,7 @@ from .processing import (
     rasterize_image,
     rasterize_pdf_pages,
 )
-from .s3_client import upload_to_s3
+from .s3_client import download_from_s3, upload_to_s3
 
 
 def get_db_session() -> Session:

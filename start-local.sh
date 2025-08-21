@@ -120,7 +120,27 @@ else
     print_success "Docker is already running"
 fi
 
-# 2. Start Docker services (Redis, Ollama)
+# 2. Load environment from .env for Exoscale DB/SOS configuration
+print_status "Loading environment from .env"
+if [ -f ".env" ]; then
+    # Export all variables from .env
+    set -a
+    source ./.env
+    set +a
+    print_success ".env loaded"
+else
+    print_warning ".env not found at project root. Ensure DATABASE_URL and S3 credentials are set in your environment."
+fi
+
+# Sanity hints for local dev using Exoscale
+if [[ -z "${DATABASE_URL}" ]]; then
+    print_warning "DATABASE_URL is not set. Set it to your Exoscale Postgres connection string in .env."
+fi
+if [[ -z "${EXOSCALE_S3_ACCESS_KEY}" || -z "${EXOSCALE_S3_SECRET_KEY}" || -z "${S3_ENDPOINT}" ]]; then
+    print_warning "Exoscale SOS variables (EXOSCALE_S3_ACCESS_KEY, EXOSCALE_S3_SECRET_KEY, S3_ENDPOINT) are not fully set."
+fi
+
+# 3. Start Docker services (Redis, Ollama)
 print_status "Starting Docker services..."
 cd deploy
 if ! docker-compose ps | grep -q "Up"; then
@@ -133,7 +153,7 @@ else
 fi
 cd ..
 
-# 3. Initialize Database
+# 4. Initialize Database (against configured DATABASE_URL)
 print_status "Initializing database..."
 cd backend
 
@@ -157,16 +177,11 @@ fi
 print_status "Setting up database tables..."
 poetry run python -c "from app.db import Base, engine; from app import models; Base.metadata.create_all(bind=engine)" || true
 
-# Create test environment setup
-print_status "Setting up test environment..."
-export TESTING=true
-export DATABASE_URL="sqlite:///./test.db"
-
-# Create uploads directory for testing
+# Ensure local directories exist for fallbacks (tiles/previews if S3 not reachable)
 mkdir -p uploads
 mkdir -p chroma_db
 
-# Start Celery worker in background
+# Start Celery worker in background (uses Redis and Exoscale DB/SOS via env)
 print_status "Starting Celery worker..."
 poetry run celery -A app.tasks worker --loglevel=info > celery.log 2>&1 &
 CELERY_PID=$!
@@ -188,7 +203,7 @@ else
     exit 1
 fi
 
-# 4. Start Frontend
+# 5. Start Frontend
 print_status "Starting Frontend development server..."
 cd ../frontend
 
