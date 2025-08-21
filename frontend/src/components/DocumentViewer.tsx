@@ -586,10 +586,16 @@ export default function DocumentViewer({
     const tiledImage = viewer.world.getItemAt(0)
     if (!tiledImage) {
       console.log('⏳ WAITING FOR TILED IMAGE - retrying in 100ms')
-      setTimeout(() => {
-        // Force overlay refresh by updating viewer state
-        setViewer(prev => prev)
-      }, 100)
+      // Use a ref to prevent infinite loops
+      const retryCount = overlaysRef.current.length // Use array length as retry counter
+      if (retryCount < 50) { // Max 5 seconds of retries
+        setTimeout(() => {
+          // Force overlay refresh by updating viewer state
+          setViewer(prev => prev)
+        }, 100)
+      } else {
+        console.error('❌ TILED IMAGE FAILED TO LOAD after 5 seconds')
+      }
       return
     }
 
@@ -614,7 +620,7 @@ export default function DocumentViewer({
           const isPixel = xRaw > 1 || yRaw > 1 || wRaw > 1 || hRaw > 1
           if (isPixel) {
             const imageRect = new OpenSeadragon.Rect(xRaw, yRaw, wRaw, hRaw)
-            rect = item.imageToViewportRectangle(imageRect)
+            rect = tiledImage.imageToViewportRectangle(imageRect)
           } else {
             rect = new OpenSeadragon.Rect(xRaw, yRaw, wRaw, hRaw)
           }
@@ -659,7 +665,7 @@ export default function DocumentViewer({
             // Disable redaction drawing when interacting with existing redaction
             isDrawingRef.current = false
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
-            const imgPt = item.viewportToImageCoordinates(pt)
+            const imgPt = tiledImage.viewportToImageCoordinates(pt)
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
             console.log('🔧 Starting redaction drag:', id)
           })
@@ -670,7 +676,7 @@ export default function DocumentViewer({
             // Disable redaction drawing when resizing
             isDrawingRef.current = false
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
-            const imgPt = item.viewportToImageCoordinates(pt)
+            const imgPt = tiledImage.viewportToImageCoordinates(pt)
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
             console.log('🔧 Starting redaction resize:', id)
           })
@@ -737,7 +743,7 @@ export default function DocumentViewer({
           if (isPixel) {
             const sizePx = 12
             const imageRect = new OpenSeadragon.Rect(c.x_position - sizePx / 2, c.y_position - sizePx / 2, sizePx, sizePx)
-            rect = item.imageToViewportRectangle(imageRect)
+            rect = tiledImage.imageToViewportRectangle(imageRect)
           } else {
             const size = 0.012
             const x = c.x_position - size / 2
@@ -772,12 +778,12 @@ export default function DocumentViewer({
   useEffect(() => {
     if (!viewer) return
     const onMove = (e: MouseEvent) => {
-      const item = viewer.world.getItemAt(0)
-      if (!item) return
+      const tiledImageMove = viewer.world.getItemAt(0)
+      if (!tiledImageMove) return
       if (draggingRef.current) {
         const { id, startX, startY, orig } = draggingRef.current
         const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
-        const img = item.viewportToImageCoordinates(vp)
+        const img = tiledImageMove.viewportToImageCoordinates(vp)
         const dx = img.x - startX
         const dy = img.y - startY
         const x1 = orig.x1 + dx
@@ -789,7 +795,7 @@ export default function DocumentViewer({
       } else if (resizingRef.current) {
         const { id, startX, startY, orig } = resizingRef.current
         const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
-        const img = item.viewportToImageCoordinates(vp)
+        const img = tiledImageMove.viewportToImageCoordinates(vp)
         const dx = img.x - startX
         const dy = img.y - startY
         const x1 = orig.x1
