@@ -575,15 +575,21 @@ export default function DocumentViewer({
     const item = viewer.world.getItemAt(0)
     if (!item) {
       console.log('🔍 OSD: No item in viewer, waiting for image load...')
-      // Wait for image to load and retry
-      const retryOverlays = () => {
+      // Wait for image to load and retry multiple times
+      const retryOverlays = (attempt = 1) => {
         const retryItem = viewer.world.getItemAt(0)
         if (retryItem) {
-          console.log('🔍 OSD: Item ready after retry, rendering overlays')
+          console.log('🔍 OSD: Item ready after retry attempt', attempt, ', rendering overlays')
           setViewer(prev => prev) // Trigger effect again
+        } else if (attempt < 5) {
+          console.log('🔍 OSD: Retry attempt', attempt, 'failed, trying again...')
+          setTimeout(() => retryOverlays(attempt + 1), 200 * attempt)
+        } else {
+          console.log('🔍 OSD: All retry attempts failed, forcing fallback to ImageFallbackViewer')
+          setUseImageFallback(true)
         }
       }
-      setTimeout(retryOverlays, 200)
+      setTimeout(() => retryOverlays(1), 200)
       return
     }
 

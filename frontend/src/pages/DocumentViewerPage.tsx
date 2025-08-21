@@ -229,11 +229,22 @@ export default function DocumentViewerPage() {
 
 	useEffect(() => {
 		// connect to socket server
-		const s = io('/socket.io', { path: '/socket.io', transports: ['websocket', 'polling'] })
+		const s = io('/', {
+			path: '/socket.io',
+			transports: ['polling', 'websocket'],
+			timeout: 5000,
+			forceNew: true
+		})
 		socketRef.current = s
 		s.on('connect', () => {
 			console.log('🔍 Socket.IO connected, joining document', documentId)
 			s.emit('join_document', { document_id: documentId })
+		})
+		s.on('connect_error', (error) => {
+			console.log('🔍 Socket.IO connection error:', error)
+		})
+		s.on('disconnect', (reason) => {
+			console.log('🔍 Socket.IO disconnected:', reason)
 		})
 		s.on('document_state', (state: any) => {
 			console.log('🔍 Document state received:', {
