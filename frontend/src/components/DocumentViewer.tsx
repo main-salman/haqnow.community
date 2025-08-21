@@ -591,9 +591,9 @@ export default function DocumentViewer({
 
     // Redaction overlays
     if (showRedactions) {
-      redactions
-        .filter(r => r.page_number === pageNumber)
-        .forEach((r) => {
+      const pageRedactions = redactions.filter(r => r.page_number === pageNumber)
+      console.log('🔲 REDACTION BOXES:', pageRedactions.length, 'boxes on page', pageNumber, 'showRedactions:', showRedactions)
+      pageRedactions.forEach((r) => {
           const el = document.createElement('div')
           el.style.background = 'rgba(0,0,0,0.85)'
           el.style.border = '1px solid rgba(0,0,0,0.9)'
@@ -680,9 +680,7 @@ export default function DocumentViewer({
     // Comment pin overlays
     if (showAnnotations) {
       const pageComments = comments.filter(c => c.page_number === pageNumber)
-      if (pageComments.length > 0) {
-        console.log('💬 COMMENT PINS:', pageComments.length, 'pins on page', pageNumber)
-      }
+      console.log('💬 COMMENT PINS:', pageComments.length, 'pins on page', pageNumber, 'showAnnotations:', showAnnotations)
       pageComments.forEach((c) => {
           const wrapper = document.createElement('div')
           wrapper.style.pointerEvents = 'auto'
@@ -741,6 +739,7 @@ export default function DocumentViewer({
             rect = new OpenSeadragon.Rect(x, y, size, size)
           }
                     try {
+            console.log('🎯 Comment coords:', { id: (c as any).id, x: c.x_position, y: c.y_position, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } })
             viewer.addOverlay({ element: wrapper, location: rect })
             console.log('✅ Comment pin added:', (c as any).id)
           } catch (err) {
