@@ -420,11 +420,23 @@ export default function DocumentViewer({
     osdViewer.addHandler('open', () => {
       window.clearTimeout(fallbackTimer)
       setUseImageFallback(false)
+
+      // Wait for image to be fully loaded before rendering overlays
+      setTimeout(() => {
+        console.log('🔍 OSD: Image opened, triggering overlay refresh')
+        setViewer(prev => prev) // Force overlay effect re-run
+      }, 100)
     })
 
-    // Add redaction drawing handlers
+        // Add redaction drawing handlers
     if (redactionMode) {
       console.log('🔍 OSD: Setting up redaction handlers')
+
+      // Disable pan/zoom during redaction mode
+      osdViewer.panHorizontal = false
+      osdViewer.panVertical = false
+      osdViewer.zoomPerClick = 1.0
+      osdViewer.zoomPerScroll = 1.0
 
       osdViewer.addHandler('canvas-press', (event: any) => {
         console.log('🎯 OSD canvas-press: redactionMode=', redactionMode, 'isDrawing=', isDrawingRef.current)
@@ -518,6 +530,12 @@ export default function DocumentViewer({
           drawStartRef.current = null
         }
       })
+    } else {
+      // Re-enable pan/zoom when not in redaction mode
+      osdViewer.panHorizontal = true
+      osdViewer.panVertical = true
+      osdViewer.zoomPerClick = 2.0
+      osdViewer.zoomPerScroll = 1.2
     }
 
     setViewer(osdViewer)
