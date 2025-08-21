@@ -746,14 +746,13 @@ export default function DocumentViewer({
 
   // Debug: Log when overlay effect runs
   useEffect(() => {
-    console.log('🔍 OSD: Overlay effect triggered:', {
+    console.log('🔍 OVERLAY EFFECT:', {
       hasViewer: !!viewer,
       commentsCount: comments.length,
       redactionsCount: redactions.length,
       pageNumber,
       showAnnotations,
-      showRedactions,
-      commentsData: comments.map(c => ({ id: c.id, x: c.x_position, y: c.y_position, page: c.page_number }))
+      showRedactions
     })
   }, [viewer, redactions, comments, pageNumber, showRedactions, showAnnotations])
 

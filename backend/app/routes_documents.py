@@ -624,24 +624,6 @@ async def get_document_thumbnail(
     return Response(content=img_bytes.getvalue(), media_type="image/png")
 
 
-@router.get("/{document_id}/download")
-async def download_document(document_id: int, db: Session = Depends(get_db)):
-    """Download original document file"""
-    # Verify document exists
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    # For now, return document info
-    # In production, this would serve the actual file
-    return {
-        "success": True,
-        "document_id": document_id,
-        "filename": document.title,
-        "download_url": f"/api/documents/{document_id}/file",
-    }
-
-
 @router.get("/{document_id}/file")
 async def get_document_file(document_id: int, db: Session = Depends(get_db)):
     """Serve the original document file for download"""
@@ -691,6 +673,24 @@ async def get_document_file(document_id: int, db: Session = Depends(get_db)):
 
     # If file not found anywhere
     raise HTTPException(status_code=404, detail="Document file not found")
+
+
+@router.get("/{document_id}/download")
+async def download_document(document_id: int, db: Session = Depends(get_db)):
+    """Download original document file"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # For now, return document info
+    # In production, this would serve the actual file
+    return {
+        "success": True,
+        "document_id": document_id,
+        "filename": document.title,
+        "download_url": f"/api/documents/{document_id}/file",
+    }
 
 
 @router.post("/{document_id}/comments")
