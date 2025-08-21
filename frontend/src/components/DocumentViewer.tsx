@@ -313,6 +313,8 @@ interface DocumentViewerProps {
     y_position: number
     content?: string
   }>
+  showAnnotations?: boolean
+  showRedactions?: boolean
 }
 
 export default function DocumentViewer({
@@ -328,7 +330,9 @@ export default function DocumentViewer({
   onRedactionDelete,
   onAddCommentAt,
   redactions = [],
-  comments = []
+  comments = [],
+  showAnnotations: propShowAnnotations,
+  showRedactions: propShowRedactions,
 }: DocumentViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null)
@@ -340,8 +344,11 @@ export default function DocumentViewer({
     console.log('📊 Data loaded:', { comments: comments.length, redactions: redactions.length, mode: commentMode ? 'comment' : redactionMode ? 'redact' : 'view' })
   }
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [showAnnotations, setShowAnnotations] = useState(true)
-  const [showRedactions, setShowRedactions] = useState(true)
+  // Use props if provided, otherwise default to internal state
+  const [internalShowAnnotations, setInternalShowAnnotations] = useState(true)
+  const [internalShowRedactions, setInternalShowRedactions] = useState(true)
+  const showAnnotations = propShowAnnotations !== undefined ? propShowAnnotations : internalShowAnnotations
+  const showRedactions = propShowRedactions !== undefined ? propShowRedactions : internalShowRedactions
   const isDrawingRef = useRef(false)
   const drawStartRef = useRef<{x: number, y: number} | null>(null)
   const currentRedactionRef = useRef<HTMLDivElement | null>(null)
@@ -947,7 +954,7 @@ export default function DocumentViewer({
       {/* Annotation Tools */}
       <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-2 flex flex-col space-y-2">
         <button
-          onClick={() => setShowAnnotations(!showAnnotations)}
+          onClick={() => setInternalShowAnnotations(!showAnnotations)}
           className={clsx(
             'p-2 rounded transition-colors',
             showAnnotations
@@ -959,7 +966,7 @@ export default function DocumentViewer({
           <MessageSquare className="h-4 w-4" />
         </button>
         <button
-          onClick={() => setShowRedactions(!showRedactions)}
+          onClick={() => setInternalShowRedactions(!showRedactions)}
           className={clsx(
             'p-2 rounded transition-colors',
             showRedactions
