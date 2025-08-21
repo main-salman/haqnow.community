@@ -62,25 +62,27 @@ export default function DocumentViewerPage() {
 	const { data: comments = [] } = useQuery({
 		queryKey: ['document-comments', documentId],
 		queryFn: () => {
-			console.log('📡 FETCHING COMMENTS:', { documentId, isAuthenticated })
+			console.log('📡 FETCHING COMMENTS:', documentId)
 			return documentsApi.getComments(documentId).then(res => {
 				console.log('📡 COMMENTS LOADED:', res.data.comments?.length || 0)
 				return res.data.comments || []
 			})
 		},
 		enabled: !!documentId && isAuthenticated,
+		staleTime: 30000, // Cache for 30 seconds to prevent excessive refetching
 	})
 
 	const { data: redactions = [] } = useQuery({
 		queryKey: ['document-redactions', documentId],
 		queryFn: () => {
-			console.log('📡 FETCHING REDACTIONS:', { documentId, isAuthenticated })
+			console.log('📡 FETCHING REDACTIONS:', documentId)
 			return documentsApi.getRedactions(documentId).then(res => {
 				console.log('📡 REDACTIONS LOADED:', res.data.redactions?.length || 0)
 				return res.data.redactions || []
 			})
 		},
 		enabled: !!documentId && isAuthenticated,
+		staleTime: 30000, // Cache for 30 seconds to prevent excessive refetching
 	})
 
 	const handleUpdateRedaction = async (r: { id?: number; page_number: number; x_start: number; y_start: number; x_end: number; y_end: number; reason?: string }) => {
@@ -246,21 +248,7 @@ export default function DocumentViewerPage() {
 		}
 	}
 
-	// Initialize live data from API data
-	useEffect(() => {
-		console.log('🔍 Initializing live data:', {
-			apiComments: comments?.length || 0,
-			apiRedactions: redactions?.length || 0,
-			liveComments: liveComments.length,
-			liveRedactions: liveRedactions.length
-		})
-		if (comments && liveComments.length === 0) {
-			setLiveComments(comments)
-		}
-		if (redactions && liveRedactions.length === 0) {
-			setLiveRedactions(redactions)
-		}
-	}, [comments, redactions])
+		// Remove the problematic live data initialization that causes infinite loops
 
 	useEffect(() => {
 		// connect to socket server
