@@ -417,15 +417,18 @@ export default function DocumentViewer({
     })
 
     // Add overlay for annotations and redactions when image opens
-    osdViewer.addHandler('open', () => {
+        osdViewer.addHandler('open', () => {
       window.clearTimeout(fallbackTimer)
       setUseImageFallback(false)
+    })
 
-      // Wait for image to be fully loaded before rendering overlays
+    // Wait for tile to be fully loaded before rendering overlays
+    osdViewer.addHandler('tile-loaded', () => {
+      console.log('🔍 OSD: Tile loaded, triggering overlay refresh')
+      // Small delay to ensure item is ready
       setTimeout(() => {
-        console.log('🔍 OSD: Image opened, triggering overlay refresh')
         setViewer(prev => prev) // Force overlay effect re-run
-      }, 100)
+      }, 50)
     })
 
         // Add redaction drawing handlers
@@ -555,7 +558,7 @@ export default function DocumentViewer({
     }
   }, [documentId, pageNumber, showAnnotations, showRedactions, redactionMode, commentMode])
 
-  // Render overlays for redactions and comments
+    // Render overlays for redactions and comments
   useEffect(() => {
     console.log('🔍 OSD: Starting overlay rendering effect')
     if (!viewer) {
@@ -571,7 +574,16 @@ export default function DocumentViewer({
 
     const item = viewer.world.getItemAt(0)
     if (!item) {
-      console.log('🔍 OSD: No item in viewer, skipping overlays')
+      console.log('🔍 OSD: No item in viewer, waiting for image load...')
+      // Wait for image to load and retry
+      const retryOverlays = () => {
+        const retryItem = viewer.world.getItemAt(0)
+        if (retryItem) {
+          console.log('🔍 OSD: Item ready after retry, rendering overlays')
+          setViewer(prev => prev) // Trigger effect again
+        }
+      }
+      setTimeout(retryOverlays, 200)
       return
     }
 
