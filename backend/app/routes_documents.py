@@ -657,22 +657,35 @@ async def get_document_file(
 
         settings = get_settings()
 
-        # Try to download from S3 originals bucket
-        file_key = f"{document_id}/{document.title}"
-        file_data = download_from_s3(settings.s3_bucket_originals, file_key)
+        # Try common S3 key variants
+        s3_keys = [
+            f"uploads/{document.title}",
+            f"{document_id}/{document.title}",
+        ]
+        last_err = None
+        for key in s3_keys:
+            try:
+                file_data = download_from_s3(settings.s3_bucket_originals, key)
+                # Determine content type based on file extension
+                content_type = "application/pdf"
+                if document.title.lower().endswith((".png", ".jpg", ".jpeg")):
+                    content_type = f"image/{document.title.split('.')[-1].lower()}"
+                elif document.title.lower().endswith(".txt"):
+                    content_type = "text/plain"
 
-        # Determine content type based on file extension
-        content_type = "application/pdf"
-        if document.title.lower().endswith((".png", ".jpg", ".jpeg")):
-            content_type = f"image/{document.title.split('.')[-1].lower()}"
-        elif document.title.lower().endswith(".txt"):
-            content_type = "text/plain"
-
-        return Response(
-            content=file_data,
-            media_type=content_type,
-            headers={"Content-Disposition": f'attachment; filename="{document.title}"'},
-        )
+                print(f"[DOWNLOAD] Served from S3 key={key}")
+                return Response(
+                    content=file_data,
+                    media_type=content_type,
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{document.title}"'
+                    },
+                )
+            except Exception as se:
+                last_err = se
+                print(f"[DOWNLOAD] S3 miss key={key}: {se}")
+        if last_err:
+            raise last_err
     except Exception as e:
         print(
             f"[DOWNLOAD] Failed to download from S3 for document={document_id}, title={getattr(document, 'title', None)}: {e}"

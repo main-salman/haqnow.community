@@ -354,6 +354,11 @@ export default function DocumentViewer({
   const [showCommentModal, setShowCommentModal] = useState(false)
   const [selectedComment, setSelectedComment] = useState<any>(null)
   const [commentModalPosition, setCommentModalPosition] = useState({ x: 0, y: 0 })
+  // HTML5 inline input for comments in OSD viewer
+  const [showOsdCommentInput, setShowOsdCommentInput] = useState(false)
+  const [osdCommentPos, setOsdCommentPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [osdCommentText, setOsdCommentText] = useState('')
+  const osdPendingCommentRef = useRef<{ x: number; y: number; page: number } | null>(null)
 
   // Debounced overlay refresh to improve performance
   const debouncedRefreshOverlays = useCallback(() => {
@@ -439,19 +444,16 @@ export default function DocumentViewer({
       }
       logEvent('Viewer', 'canvas-click', { commentMode, redactionMode })
       if (redactionMode) return
-      if (!commentMode || !onAddCommentAt) return
-    // Also guard canvas-press used by redaction drawing (if configured elsewhere)
-    osdViewer.addHandler('canvas-press', () => {
-      if (suppressCanvasInteractionsRef.current) {
-        logWarn('Viewer', 'canvas-press suppressed due to overlay interaction')
-        return
-      }
-    })
+      if (!commentMode) return
 
       const item = osdViewer.world.getItemAt(0)
       if (!item) return
       const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
       const imgPoint = item.viewportToImageCoordinates(vpPoint)
+      // Screen-relative position for inline popup
+      const viewerRect = (viewerRef.current as HTMLDivElement).getBoundingClientRect()
+      const screenX = event.originalEvent.clientX - viewerRect.left
+      const screenY = event.originalEvent.clientY - viewerRect.top
 
       // Check if we clicked near an existing comment (within 50 pixels)
       const clickRadius = 50
@@ -469,8 +471,20 @@ export default function DocumentViewer({
         // Show existing comment in a popup
         showCommentPopup(nearbyComment, event.position)
       } else {
-        logEvent('Comments', 'Creating new comment', { x: imgPoint.x, y: imgPoint.y, page: pageNumber })
-        onAddCommentAt(imgPoint.x, imgPoint.y, pageNumber)
+        // Open inline HTML5 input near the click position
+        setOsdCommentPos({ x: screenX, y: screenY })
+        setOsdCommentText('')
+        setShowOsdCommentInput(true)
+        osdPendingCommentRef.current = { x: imgPoint.x, y: imgPoint.y, page: pageNumber }
+        logEvent('Comments', 'OSD inline input opened', { imgX: imgPoint.x, imgY: imgPoint.y, page: pageNumber })
+      }
+    })
+
+    // Guard redaction drawing press when suppression is active
+    osdViewer.addHandler('canvas-press', () => {
+      if (suppressCanvasInteractionsRef.current) {
+        logWarn('Viewer', 'canvas-press suppressed due to overlay interaction')
+        return
       }
     })
 
@@ -1018,6 +1032,45 @@ export default function DocumentViewer({
           <Maximize className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Inline OSD comment input */}
+      {showOsdCommentInput && (
+        <div
+          className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-2"
+          style={{ left: osdCommentPos.x, top: osdCommentPos.y - 60, minWidth: 220 }}
+        >
+          <textarea
+            className="w-full p-2 border border-gray-200 rounded text-sm resize-none"
+            placeholder="Enter your comment..."
+            rows={3}
+            value={osdCommentText}
+            onChange={(e) => setOsdCommentText(e.target.value)}
+            autoFocus
+          />
+          <div className="flex justify-end space-x-2 mt-2">
+            <button
+              onClick={() => { setShowOsdCommentInput(false); setOsdCommentText(''); osdPendingCommentRef.current = null }}
+              className="px-3 py-1 text-xs text-gray-600 hover:text-gray-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (!osdCommentText.trim() || !osdPendingCommentRef.current) return
+                const { x, y, page } = osdPendingCommentRef.current
+                ;(window as any).tempCommentText = osdCommentText.trim()
+                onAddCommentAt?.(x, y, page)
+                setShowOsdCommentInput(false)
+                setOsdCommentText('')
+                osdPendingCommentRef.current = null
+              }}
+              className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Page Navigation */}
       {totalPages > 1 && (
