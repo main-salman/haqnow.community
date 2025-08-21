@@ -23,3 +23,14 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "ip_filter" {
+  description = "List of CIDR ranges allowed to connect to the DB (e.g., [\"185.19.30.32/32\"])"
+  type        = list(string)
+  default     = []
+}
+
+variable "service_name" {
+  description = "Existing DBaaS service name (to avoid replacement)"
+  type        = string
+}

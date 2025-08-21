@@ -580,19 +580,20 @@ export default function DocumentViewer({
     })
     overlaysRef.current = []
 
-        const item = viewer.world.getItemAt(0)
-    if (!item) {
-      // Wait for image to load and retry
-      setTimeout(() => setViewer(prev => prev), 100)
+    console.log('🎯 RENDERING OVERLAYS:', { comments: comments.length, redactions: redactions.length, showAnnotations, showRedactions })
+
+    // Check viewer state and wait for tiled image if needed
+    const tiledImage = viewer.world.getItemAt(0)
+    if (!tiledImage) {
+      console.log('⏳ WAITING FOR TILED IMAGE - retrying in 100ms')
+      setTimeout(() => {
+        // Force overlay refresh by updating viewer state
+        setViewer(prev => prev)
+      }, 100)
       return
     }
 
-    console.log('🎯 RENDERING OVERLAYS:', { comments: comments.length, redactions: redactions.length, showAnnotations, showRedactions })
-
-    // Check viewer state
-    console.log('🔍 VIEWER STATE:', { hasViewer: !!viewer, tiledImageCount: viewer?.world?.getItemCount() || 0 })
-    const tiledImage = viewer?.world?.getItemAt(0)
-    console.log('🔍 TILED IMAGE:', { hasTiledImage: !!tiledImage, isReady: tiledImage?.getFullyLoaded?.() })
+    console.log('✅ TILED IMAGE READY - rendering overlays')
 
     // Redaction overlays
     if (showRedactions) {

@@ -2,7 +2,6 @@ terraform {
   required_providers {
     exoscale = {
       source  = "exoscale/exoscale"
-      version = "~> 0.65"
     }
     random = {
       source  = "hashicorp/random"
@@ -117,4 +116,16 @@ resource "exoscale_compute_instance" "main" {
 resource "random_password" "db_password" {
   length  = 32
   special = true
+}
+
+# DBaaS module (managed via Terraform). Import the existing service to avoid recreation.
+module "database" {
+  source      = "../../modules/database"
+  zone        = var.exoscale_zone
+  plan        = var.db_plan
+  pg_version  = var.pg_version
+  backup_schedule = var.db_backup_schedule
+  tags        = { Environment = "dev" }
+  service_name = "haqnow-community-dev-db-exoscale"
+  ip_filter   = ["185.19.30.32/32"]
 }

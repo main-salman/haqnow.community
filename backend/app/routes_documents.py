@@ -624,6 +624,15 @@ async def get_document_thumbnail(
     return Response(content=img_bytes.getvalue(), media_type="image/png")
 
 
+@router.get("/{document_id}/file-test")
+async def test_file_endpoint(document_id: int):
+    """Test endpoint to verify routing works"""
+    return {
+        "message": f"File endpoint works for document {document_id}",
+        "status": "success",
+    }
+
+
 @router.get("/{document_id}/file")
 async def get_document_file(document_id: int, db: Session = Depends(get_db)):
     """Serve the original document file for download"""
