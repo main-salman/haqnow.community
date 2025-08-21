@@ -16,6 +16,7 @@ import {
 	Trash2
 } from 'lucide-react'
 import { documentsApi, searchApi } from '../services/api'
+import { useAuthStore } from '../services/auth'
 import DocumentViewer from '../components/DocumentViewer'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
@@ -25,6 +26,7 @@ export default function DocumentViewerPage() {
 	const { id } = useParams<{ id: string }>()
 	const documentId = parseInt(id || '0')
 	const queryClient = useQueryClient()
+	const { isAuthenticated } = useAuthStore()
 	const [currentPage, setCurrentPage] = useState(0)
 	const [showSidebar, setShowSidebar] = useState(true)
 	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'ai' | 'sharing'>('info')
@@ -59,14 +61,26 @@ export default function DocumentViewerPage() {
 
 	const { data: comments = [] } = useQuery({
 		queryKey: ['document-comments', documentId],
-		queryFn: () => documentsApi.getComments(documentId).then(res => res.data.comments || []),
-		enabled: !!documentId,
+		queryFn: () => {
+			console.log('🔍 Fetching comments with auth:', { documentId, isAuthenticated })
+			return documentsApi.getComments(documentId).then(res => {
+				console.log('🔍 Comments API response:', res.data.comments?.length || 0)
+				return res.data.comments || []
+			})
+		},
+		enabled: !!documentId && isAuthenticated,
 	})
 
 	const { data: redactions = [] } = useQuery({
 		queryKey: ['document-redactions', documentId],
-		queryFn: () => documentsApi.getRedactions(documentId).then(res => (res.data.redactions || [])),
-		enabled: !!documentId,
+		queryFn: () => {
+			console.log('🔍 Fetching redactions with auth:', { documentId, isAuthenticated })
+			return documentsApi.getRedactions(documentId).then(res => {
+				console.log('🔍 Redactions API response:', res.data.redactions?.length || 0)
+				return res.data.redactions || []
+			})
+		},
+		enabled: !!documentId && isAuthenticated,
 	})
 
 	const handleUpdateRedaction = async (r: { id?: number; page_number: number; x_start: number; y_start: number; x_end: number; y_end: number; reason?: string }) => {
