@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { logEvent, logError, logWarn } from '../utils/log'
 import OpenSeadragon from 'openseadragon'
 import {
   ZoomIn,
@@ -350,6 +351,9 @@ export default function DocumentViewer({
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const showAnnotations = propShowAnnotations !== undefined ? propShowAnnotations : internalShowAnnotations
   const showRedactions = propShowRedactions !== undefined ? propShowRedactions : internalShowRedactions
+  const [showCommentModal, setShowCommentModal] = useState(false)
+  const [selectedComment, setSelectedComment] = useState<any>(null)
+  const [commentModalPosition, setCommentModalPosition] = useState({ x: 0, y: 0 })
 
   // Debounced overlay refresh to improve performance
   const debouncedRefreshOverlays = useCallback(() => {
@@ -362,6 +366,13 @@ export default function DocumentViewer({
       }
     }, 100) // 100ms debounce
   }, [viewer])
+
+  // Function to show existing comment popup
+  const showCommentPopup = useCallback((comment: any, position: any) => {
+    setSelectedComment(comment)
+    setCommentModalPosition({ x: position.x, y: position.y })
+    setShowCommentModal(true)
+  }, [])
   const isDrawingRef = useRef(false)
   const drawStartRef = useRef<{x: number, y: number} | null>(null)
   const currentRedactionRef = useRef<HTMLDivElement | null>(null)
@@ -420,15 +431,34 @@ export default function DocumentViewer({
 
     // Handle single clicks to add comments (when in comment mode)
     osdViewer.addHandler('canvas-click', (event: any) => {
-      console.log('🔍 OSD canvas-click:', { commentMode, redactionMode })
+      logEvent('Viewer', 'canvas-click', { commentMode, redactionMode })
       if (redactionMode) return
       if (!commentMode || !onAddCommentAt) return
+
       const item = osdViewer.world.getItemAt(0)
       if (!item) return
       const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
       const imgPoint = item.viewportToImageCoordinates(vpPoint)
-      console.log('🔍 OSD comment click at:', imgPoint.x, imgPoint.y)
-      onAddCommentAt(imgPoint.x, imgPoint.y, pageNumber)
+
+      // Check if we clicked near an existing comment (within 50 pixels)
+      const clickRadius = 50
+      const nearbyComment = comments.find(c => {
+        if (c.page_number !== pageNumber) return false
+        const distance = Math.sqrt(
+          Math.pow(c.x_position - imgPoint.x, 2) +
+          Math.pow(c.y_position - imgPoint.y, 2)
+        )
+        return distance <= clickRadius
+      })
+
+      if (nearbyComment) {
+        logEvent('Comments', 'Clicked near existing comment', { id: nearbyComment.id, x: nearbyComment.x_position, y: nearbyComment.y_position })
+        // Show existing comment in a popup
+        showCommentPopup(nearbyComment, event.position)
+      } else {
+        logEvent('Comments', 'Creating new comment', { x: imgPoint.x, y: imgPoint.y, page: pageNumber })
+        onAddCommentAt(imgPoint.x, imgPoint.y, pageNumber)
+      }
     })
 
     // Add overlay for annotations and redactions when image opens
@@ -648,15 +678,23 @@ export default function DocumentViewer({
           del.textContent = '×'
           del.title = 'Delete redaction'
           del.style.position = 'absolute'
-          del.style.right = '0'
-          del.style.top = '0'
-          del.style.width = '16px'
-          del.style.height = '16px'
+          del.style.right = '-2px'
+          del.style.top = '-2px'
+          del.style.width = '20px'
+          del.style.height = '20px'
           del.style.background = '#ef4444'
           del.style.color = 'white'
-          del.style.border = 'none'
+          del.style.border = '2px solid white'
           del.style.cursor = 'pointer'
-          del.style.fontSize = '12px'
+          del.style.fontSize = '14px'
+          del.style.fontWeight = 'bold'
+          del.style.borderRadius = '50%'
+          del.style.zIndex = '10001'
+          del.style.display = 'flex'
+          del.style.alignItems = 'center'
+          del.style.justifyContent = 'center'
+          del.style.lineHeight = '1'
+          del.style.pointerEvents = 'auto'
           el.appendChild(del)
 
           // Drag/resize handlers (image pixel coordinates)
@@ -671,7 +709,7 @@ export default function DocumentViewer({
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
-            console.log('🔧 Starting redaction drag:', id, 'at', imgPt)
+            logEvent('Redactions', 'Start drag', { id, imgX: imgPt.x, imgY: imgPt.y })
           })
           handle.addEventListener('mousedown', (e) => {
             if (!id) return
@@ -679,17 +717,23 @@ export default function DocumentViewer({
             e.preventDefault()
             // Disable redaction drawing when resizing
             isDrawingRef.current = false
+
+            // Disable OpenSeadragon mouse tracking during resize
+            if (viewer) {
+              viewer.setMouseNavEnabled(false)
+            }
+
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
-            console.log('🔧 Starting redaction resize:', id, 'at', imgPt)
+            logEvent('Redactions', 'Start resize', { id, imgX: imgPt.x, imgY: imgPt.y })
           })
 
           del.addEventListener('click', (e) => {
             e.stopPropagation()
             e.preventDefault()
             if (!id) return
-            console.log('🗑️ REDACTION DELETE CLICKED:', id)
+            logEvent('Redactions', 'Delete clicked', { id })
             if (confirm('Delete this redaction?')) {
               onRedactionDelete?.(id)
             }
@@ -821,6 +865,10 @@ export default function DocumentViewer({
       }
     }
     const onUp = () => {
+      // Re-enable OpenSeadragon mouse tracking
+      if (viewer) {
+        viewer.setMouseNavEnabled(true)
+      }
       draggingRef.current = null
       resizingRef.current = null
     }
@@ -1009,6 +1057,37 @@ export default function DocumentViewer({
           <Download className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Comment Modal for Existing Comments */}
+      {showCommentModal && selectedComment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Comment</h3>
+              <button
+                onClick={() => setShowCommentModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-gray-700">{selectedComment.content}</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Created: {new Date(selectedComment.created_at || Date.now()).toLocaleString()}
+              </p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowCommentModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

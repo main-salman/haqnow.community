@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
+from .config import get_settings
 from .db import get_db
 from .export import get_export_service
 from .models import (
@@ -449,6 +450,9 @@ async def delete_redaction(
         and doc.uploader_id != current_user.id
     ):
         raise HTTPException(status_code=403, detail="Not allowed")
+    print(
+        f"[REDACTIONS] delete_redaction: doc={document_id}, id={redaction_id}, user={getattr(current_user, 'id', None)}"
+    )
     db.delete(red)
     db.commit()
     return {"success": True}
@@ -634,7 +638,9 @@ async def test_file_endpoint(document_id: int):
 
 
 @router.get("/{document_id}/file")
-async def get_document_file(document_id: int, db: Session = Depends(get_db)):
+async def get_document_file(
+    document_id: int, db: Session = Depends(get_db), request: Request = None
+):
     """Serve the original document file for download"""
     import os
 
@@ -668,19 +674,41 @@ async def get_document_file(document_id: int, db: Session = Depends(get_db)):
             headers={"Content-Disposition": f'attachment; filename="{document.title}"'},
         )
     except Exception as e:
-        print(f"Failed to download from S3: {e}")
+        print(
+            f"[DOWNLOAD] Failed to download from S3 for document={document_id}, title={getattr(document, 'title', None)}: {e}"
+        )
         pass
 
-    # Fallback to local file (shared volume)
-    local_path = f"/app/uploads/{document_id}_{document.title}"
-    if os.path.exists(local_path):
-        return FileResponse(
-            path=local_path,
-            filename=document.title,
-            media_type="application/octet-stream",
-        )
+    # Fallback to local file (shared volume) - try multiple possible paths
+    candidate_paths = [
+        f"/app/uploads/{document_id}_{document.title}",
+        f"/app/uploads/{document.title}",
+        f"/srv/backend/uploads/{document_id}_{document.title}",
+        f"/srv/backend/uploads/{document.title}",
+        f"/srv/uploads/{document_id}_{document.title}",
+        f"/srv/uploads/{document.title}",
+        f"uploads/{document_id}_{document.title}",
+        f"uploads/{document.title}",
+    ]
 
-    # If file not found anywhere
+    for local_path in candidate_paths:
+        if os.path.exists(local_path):
+            print(f"[DOWNLOAD] Found document file at: {local_path}")
+            return FileResponse(
+                path=local_path,
+                filename=document.title,
+                media_type="application/octet-stream",
+            )
+
+    # If file not found anywhere, log the attempted paths for debugging
+    client_ip = None
+    try:
+        client_ip = request.client.host if request else None
+    except Exception:
+        client_ip = None
+    print(
+        f"[DOWNLOAD] Document file not found for document={document_id}, title={document.title}, client={client_ip}. Tried paths: {candidate_paths}"
+    )
     raise HTTPException(status_code=404, detail="Document file not found")
 
 
@@ -727,6 +755,9 @@ async def add_comment(
         content=comment_data.get("content", ""),
     )
 
+    print(
+        f"[COMMENTS] add_comment: doc={document_id}, user={getattr(current_user, 'id', None)}, page={comment.page_number}, x={comment.x_position}, y={comment.y_position}"
+    )
     db.add(comment)
     db.commit()
     db.refresh(comment)
@@ -770,6 +801,9 @@ async def update_comment(
         comment.x_position = float(payload["x_position"])
     if "y_position" in payload:
         comment.y_position = float(payload["y_position"])
+    print(
+        f"[COMMENTS] update_comment: doc={document_id}, comment={comment_id}, user={getattr(current_user, 'id', None)}, payload_keys={list(payload.keys())}"
+    )
     db.commit()
     db.refresh(comment)
     return {
@@ -846,6 +880,9 @@ async def delete_comment(
     ):
         raise HTTPException(status_code=403, detail="Not allowed")
 
+    print(
+        f"[COMMENTS] delete_comment: doc={document_id}, comment={comment_id}, user={getattr(current_user, 'id', None)}"
+    )
     db.delete(comment)
     db.commit()
     return {"success": True}
@@ -878,6 +915,9 @@ async def add_redaction(
         reason=redaction_data.get("reason", ""),
     )
 
+    print(
+        f"[REDACTIONS] add_redaction: doc={document_id}, user={getattr(current_user, 'id', None)}, page={redaction.page_number}, x1={redaction.x_start}, y1={redaction.y_start}, x2={redaction.x_end}, y2={redaction.y_end}"
+    )
     db.add(redaction)
     db.commit()
     db.refresh(redaction)

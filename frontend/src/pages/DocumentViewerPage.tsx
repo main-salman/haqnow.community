@@ -20,6 +20,7 @@ import { useAuthStore } from '../services/auth'
 import DocumentViewer from '../components/DocumentViewer'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
+import { logEvent, logError, logWarn } from '../utils/log'
 import { io, Socket } from 'socket.io-client'
 
 export default function DocumentViewerPage() {
@@ -90,7 +91,7 @@ export default function DocumentViewerPage() {
 	const handleUpdateRedaction = async (r: { id?: number; page_number: number; x_start: number; y_start: number; x_end: number; y_end: number; reason?: string }) => {
 		try {
 			if (!r.id) return
-			console.log('🔧 Updating redaction:', r.id, 'with coordinates:', { x_start: r.x_start, y_start: r.y_start, x_end: r.x_end, y_end: r.y_end })
+			logEvent('Redactions', 'Updating', { id: r.id, x_start: r.x_start, y_start: r.y_start, x_end: r.x_end, y_end: r.y_end })
 			await documentsApi.updateRedaction(documentId, r.id, {
 				x_start: r.x_start,
 				y_start: r.y_start,
@@ -103,7 +104,7 @@ export default function DocumentViewerPage() {
 				socketRef.current.emit('add_redaction', { document_id: documentId, redaction: r })
 			}
 		} catch (error: any) {
-			console.error('❌ Failed to update redaction:', error)
+			logError('Redactions', 'Failed to update', { error: error?.message, response: error?.response?.data })
 		}
 	}
 
@@ -114,7 +115,7 @@ export default function DocumentViewerPage() {
 		setDeletingRedactions(prev => new Set(prev).add(redactionId))
 
 		try {
-			console.log('🗑️ Deleting redaction:', redactionId)
+			logEvent('Redactions', 'Deleting', { id: redactionId })
 			await documentsApi.deleteRedaction(documentId, redactionId)
 			queryClient.invalidateQueries(['document-redactions', documentId])
 			if (socketRef.current) {
@@ -122,10 +123,10 @@ export default function DocumentViewerPage() {
 			}
 			toast.success('Redaction deleted')
 		} catch (error: any) {
-			console.error('❌ Failed to delete redaction:', error)
+			logError('Redactions', 'Failed to delete', { error: error?.message, response: error?.response?.data })
 			// Handle 404 gracefully - redaction might have been already deleted
 			if (error?.response?.status === 404) {
-				console.log('Redaction already deleted, refreshing redactions')
+				logWarn('Redactions', 'Delete 404 - already deleted', { id: redactionId })
 				queryClient.invalidateQueries(['document-redactions', documentId])
 				toast.success('Redaction deleted')
 			} else {
@@ -374,35 +375,77 @@ export default function DocumentViewerPage() {
 
 	// overlays are now rendered by DocumentViewer via OpenSeadragon overlays
 
-		const handleViewerClickAddComment = (x: number, y: number, page: number) => {
+	const [showCommentPopup, setShowCommentPopup] = useState(false)
+	const [commentPopupPosition, setCommentPopupPosition] = useState({ x: 0, y: 0, page: 0 })
+	const [commentPopupText, setCommentPopupText] = useState('')
+
+	const handleViewerClickAddComment = (x: number, y: number, page: number) => {
 		if (mode !== 'comment') return
 
 		// Check if we have text from the in-place input (ImageFallbackViewer)
-		const commentText = (window as any).tempCommentText || window.prompt('Enter your comment:')
-		if (!commentText || !commentText.trim()) {
-			return // User cancelled or entered empty text
+		if ((window as any).tempCommentText) {
+			const commentText = (window as any).tempCommentText
+			delete (window as any).tempCommentText
+
+			logEvent('Comments', 'Submitting from fallback input', { x, y, page })
+			documentsApi.addComment(documentId, {
+				content: commentText.trim(),
+				page_number: page,
+				x_position: x,
+				y_position: y,
+			}).then(() => {
+				toast.success('Comment added')
+				queryClient.invalidateQueries(['document-comments', documentId])
+				setMode('view') // Exit comment mode after adding
+			}).catch((err) => { logError('Comments', 'Failed to add via fallback', { err: err?.message, data: err?.response?.data }); toast.error('Failed to add comment') })
+
+			// emit live comment marker to others
+			if (socketRef.current) {
+				socketRef.current.emit('add_comment', {
+					document_id: documentId,
+					comment: { page_number: page, x_position: x, y_position: y, content: commentText.trim() }
+				})
+			}
+		} else {
+			// Show HTML5 style popup
+			setCommentPopupPosition({ x, y, page })
+			setCommentPopupText('')
+			setShowCommentPopup(true)
 		}
+	}
 
-		// Clear the temp text
-		delete (window as any).tempCommentText
+	const handleSubmitComment = async () => {
+		if (!commentPopupText.trim()) return
 
-		documentsApi.addComment(documentId, {
-			content: commentText.trim(),
-			page_number: page,
-			x_position: x,
-			y_position: y,
-		}).then(() => {
+		try {
+			logEvent('Comments', 'Submitting from popup', { x: commentPopupPosition.x, y: commentPopupPosition.y, page: commentPopupPosition.page })
+			await documentsApi.addComment(documentId, {
+				content: commentPopupText.trim(),
+				page_number: commentPopupPosition.page,
+				x_position: commentPopupPosition.x,
+				y_position: commentPopupPosition.y,
+			})
 			toast.success('Comment added')
 			queryClient.invalidateQueries(['document-comments', documentId])
 			setMode('view') // Exit comment mode after adding
-		}).catch(() => toast.error('Failed to add comment'))
+			setShowCommentPopup(false)
+			setCommentPopupText('')
 
-		// emit live comment marker to others
-		if (socketRef.current) {
-			socketRef.current.emit('add_comment', {
-				document_id: documentId,
-				comment: { page_number: page, x_position: x, y_position: y, content: commentText.trim() }
-			})
+			// emit live comment marker to others
+			if (socketRef.current) {
+				socketRef.current.emit('add_comment', {
+					document_id: documentId,
+					comment: {
+						page_number: commentPopupPosition.page,
+						x_position: commentPopupPosition.x,
+						y_position: commentPopupPosition.y,
+						content: commentPopupText.trim()
+					}
+				})
+			}
+		} catch (error: any) {
+			logError('Comments', 'Failed to add via popup', { error: error?.message, response: error?.response?.data })
+			toast.error('Failed to add comment')
 		}
 	}
 
