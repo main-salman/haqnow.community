@@ -41,6 +41,22 @@ export default function DocumentViewerPage() {
 	const markersLayerRef = useRef<HTMLDivElement | null>(null)
 	const [liveComments, setLiveComments] = useState<any[]>([])
 	const [liveRedactions, setLiveRedactions] = useState<any[]>([])
+
+	// Initialize live data from API data
+	useEffect(() => {
+		console.log('🔍 Initializing live data:', {
+			apiComments: comments?.length || 0,
+			apiRedactions: redactions?.length || 0,
+			liveComments: liveComments.length,
+			liveRedactions: liveRedactions.length
+		})
+		if (comments && liveComments.length === 0) {
+			setLiveComments(comments)
+		}
+		if (redactions && liveRedactions.length === 0) {
+			setLiveRedactions(redactions)
+		}
+	}, [comments, redactions])
 	const [showPins, setShowPins] = useState(true)
 	const [hasRedactionLock, setHasRedactionLock] = useState(false)
 
@@ -152,7 +168,13 @@ export default function DocumentViewerPage() {
 		reason?: string
 	}) => {
 		try {
+			console.log('🔍 Creating redaction:', {
+				hasRedactionLock,
+				hasSocket: !!socketRef.current,
+				redactionData
+			})
 			if (!hasRedactionLock && socketRef.current) {
+				console.log('🔍 Redaction blocked: No lock held')
 				toast.error('You do not hold the redaction lock')
 				return
 			}
@@ -210,9 +232,14 @@ export default function DocumentViewerPage() {
 		const s = io('/socket.io', { path: '/socket.io', transports: ['websocket', 'polling'] })
 		socketRef.current = s
 		s.on('connect', () => {
+			console.log('🔍 Socket.IO connected, joining document', documentId)
 			s.emit('join_document', { document_id: documentId })
 		})
 		s.on('document_state', (state: any) => {
+			console.log('🔍 Document state received:', {
+				comments: state?.comments?.length || 0,
+				redactions: state?.redactions?.length || 0
+			})
 			if (state?.comments) setLiveComments(state.comments)
 			if (state?.redactions) setLiveRedactions(state.redactions)
 		})
@@ -236,9 +263,14 @@ export default function DocumentViewerPage() {
 			queryClient.invalidateQueries(['document-redactions', documentId])
 		})
 		s.on('redaction_lock_status', (payload: any) => {
+			console.log('🔍 Redaction lock status received:', payload)
 			if (payload?.document_id === documentId) {
 				setHasRedactionLock(!!payload.acquired)
-				if (!payload.acquired) {
+				if (payload.acquired) {
+					console.log('🔍 Redaction lock acquired successfully')
+					toast.success('Redaction lock acquired')
+				} else {
+					console.log('🔍 Failed to acquire redaction lock')
 					toast.error('Another user is currently redacting this document')
 					setMode('view')
 				}
@@ -259,10 +291,15 @@ export default function DocumentViewerPage() {
 	}, [documentId])
 
 	useEffect(() => {
-		if (!socketRef.current) return
+		if (!socketRef.current) {
+			console.log('🔍 No socket connection for redaction lock')
+			return
+		}
 		if (mode === 'redact') {
+			console.log('🔍 Acquiring redaction lock for document', documentId)
 			socketRef.current.emit('acquire_redaction_lock', { document_id: documentId })
 		} else if (hasRedactionLock) {
+			console.log('🔍 Releasing redaction lock for document', documentId)
 			socketRef.current.emit('release_redaction_lock', { document_id: documentId })
 			setHasRedactionLock(false)
 		}
@@ -439,8 +476,8 @@ export default function DocumentViewerPage() {
 						commentMode={mode === 'comment'}
 						onRedactionCreate={handleCreateRedaction}
 						onAddCommentAt={handleViewerClickAddComment}
-						redactions={redactions || []}
-						comments={comments || []}
+						redactions={liveRedactions.length > 0 ? liveRedactions : (redactions || [])}
+						comments={liveComments.length > 0 ? liveComments : (comments || [])}
 						onRedactionUpdate={handleUpdateRedaction}
 						onRedactionDelete={handleDeleteRedaction}
 					/>
