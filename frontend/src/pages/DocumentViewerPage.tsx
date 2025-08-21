@@ -45,6 +45,7 @@ export default function DocumentViewerPage() {
 	const [liveRedactions, setLiveRedactions] = useState<any[]>([])
 	const [showPins, setShowPins] = useState(true)
 	const [hasRedactionLock, setHasRedactionLock] = useState(false)
+	const [deletingComments, setDeletingComments] = useState<Set<number>>(new Set())
 
 	const { data: document, isLoading } = useQuery({
 		queryKey: ['document', documentId],
@@ -283,8 +284,16 @@ export default function DocumentViewerPage() {
 		s.on('comment_deleted', (payload: any) => {
 			const cid = payload?.comment_id
 			if (!cid) return
-			setLiveComments((prev) => prev.filter((c: any) => String(c.id) !== String(cid)))
-			queryClient.invalidateQueries(['document-comments', documentId])
+
+			// Update live comments state
+			setLiveComments((prev) => {
+				const filtered = prev.filter((c: any) => String(c.id) !== String(cid))
+				// Only invalidate queries if the comment was actually in our state
+				if (filtered.length !== prev.length) {
+					queryClient.invalidateQueries(['document-comments', documentId])
+				}
+				return filtered
+			})
 		})
 		s.on('redaction_added', (payload: any) => {
 			setLiveRedactions((prev) => [...prev, payload.redaction])
@@ -611,6 +620,11 @@ export default function DocumentViewerPage() {
 													</div>
 													<button
 														onClick={async () => {
+															// Prevent multiple rapid clicks
+															if (deletingComments.has(comment.id)) return
+
+															setDeletingComments(prev => new Set(prev).add(comment.id))
+
 															try {
 																await documentsApi.deleteComment(documentId, comment.id)
 																queryClient.invalidateQueries(['document-comments', documentId])
@@ -618,13 +632,30 @@ export default function DocumentViewerPage() {
 																	socketRef.current.emit('delete_comment', { document_id: documentId, comment_id: String(comment.id) })
 																}
 																toast.success('Comment deleted')
-															} catch {
-																toast.error('Failed to delete comment')
+															} catch (error: any) {
+																// Handle 404 gracefully - comment might have been already deleted
+																if (error?.response?.status === 404) {
+																	console.log('Comment already deleted, refreshing comments')
+																	queryClient.invalidateQueries(['document-comments', documentId])
+																	toast.success('Comment deleted')
+																} else {
+																	toast.error('Failed to delete comment')
+																}
+															} finally {
+																setDeletingComments(prev => {
+																	const newSet = new Set(prev)
+																	newSet.delete(comment.id)
+																	return newSet
+																})
 															}
 														}}
-														className="text-xs text-red-600 hover:text-red-800"
+														disabled={deletingComments.has(comment.id)}
+														className={`text-xs ${deletingComments.has(comment.id)
+															? 'text-gray-400 cursor-not-allowed'
+															: 'text-red-600 hover:text-red-800'
+														}`}
 													>
-														Delete
+														{deletingComments.has(comment.id) ? 'Deleting...' : 'Delete'}
 													</button>
 												</div>
 											))}

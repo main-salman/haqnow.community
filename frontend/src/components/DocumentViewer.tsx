@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import OpenSeadragon from 'openseadragon'
 import {
   ZoomIn,
@@ -347,8 +347,21 @@ export default function DocumentViewer({
   // Use props if provided, otherwise default to internal state
   const [internalShowAnnotations, setInternalShowAnnotations] = useState(true)
   const [internalShowRedactions, setInternalShowRedactions] = useState(true)
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const showAnnotations = propShowAnnotations !== undefined ? propShowAnnotations : internalShowAnnotations
   const showRedactions = propShowRedactions !== undefined ? propShowRedactions : internalShowRedactions
+
+  // Debounced overlay refresh to improve performance
+  const debouncedRefreshOverlays = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = setTimeout(() => {
+      if (viewer) {
+        refreshOverlays()
+      }
+    }, 100) // 100ms debounce
+  }, [viewer])
   const isDrawingRef = useRef(false)
   const drawStartRef = useRef<{x: number, y: number} | null>(null)
   const currentRedactionRef = useRef<HTMLDivElement | null>(null)
@@ -723,7 +736,10 @@ export default function DocumentViewer({
 
           pin.addEventListener('click', (e) => {
             e.stopPropagation()
-            bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none'
+            // Use requestAnimationFrame to improve performance
+            requestAnimationFrame(() => {
+              bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none'
+            })
           })
 
           wrapper.appendChild(pin)
