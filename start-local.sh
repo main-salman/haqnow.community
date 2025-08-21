@@ -132,6 +132,55 @@ else
     print_warning ".env not found at project root. Ensure DATABASE_URL and S3 credentials are set in your environment."
 fi
 
+# 2.1 Ensure DB connectivity (Exoscale) - if blocked, establish SSH tunnel via server and override DATABASE_URL
+print_status "Checking Exoscale DB connectivity..."
+# Parse DB host/port/user/pass/db from DATABASE_URL
+DB_HOST=$(python3 -c 'import os,urllib.parse as u; r=u.urlparse(os.environ.get("DATABASE_URL","")); print(r.hostname or "")' 2>/dev/null)
+DB_PORT=$(python3 -c 'import os,urllib.parse as u; r=u.urlparse(os.environ.get("DATABASE_URL","")); print(r.port or "")' 2>/dev/null)
+DB_USER=$(python3 -c 'import os,urllib.parse as u; r=u.urlparse(os.environ.get("DATABASE_URL","")); print(r.username or "")' 2>/dev/null)
+DB_PASS=$(python3 -c 'import os,urllib.parse as u; r=u.urlparse(os.environ.get("DATABASE_URL","")); print(r.password or "")' 2>/dev/null)
+DB_NAME=$(python3 -c 'import os,urllib.parse as u; r=u.urlparse(os.environ.get("DATABASE_URL","")); print((r.path or "/")[1:])' 2>/dev/null)
+DB_QUERY=$(python3 -c 'import os,urllib.parse as u; r=u.urlparse(os.environ.get("DATABASE_URL","")); print(r.query or "")' 2>/dev/null)
+
+TUNNEL_PORT=55432
+if [ -n "$DB_HOST" ] && [ -n "$DB_PORT" ]; then
+    # Quick TCP probe
+    if ! python3 - "$DB_HOST" "$DB_PORT" 2>/dev/null <<'PY'
+import socket, sys
+host = sys.argv[1]
+port = int(sys.argv[2])
+s = socket.socket()
+s.settimeout(2)
+try:
+    s.connect((host, port))
+    print("OK")
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+finally:
+    try:
+        s.close()
+    except Exception:
+        pass
+PY
+    then
+        print_warning "DB not reachable directly. Creating SSH tunnel via server $SERVER_IP..."
+        # Kill any existing tunnel on the same local port
+        kill_port $TUNNEL_PORT || true
+        # Create tunnel: local TUNNEL_PORT -> DB_HOST:DB_PORT via server
+        ssh -i "$HOME/.ssh/haqnow_deploy_key" -f -N -L $TUNNEL_PORT:$DB_HOST:$DB_PORT ubuntu@${SERVER_IP} || true
+        # Override DATABASE_URL to use localhost and tunnel port
+        if [ -n "$DB_QUERY" ]; then
+            export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${TUNNEL_PORT}/${DB_NAME}?${DB_QUERY}"
+        else
+            export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${TUNNEL_PORT}/${DB_NAME}"
+        fi
+        print_success "DB tunnel established on localhost:${TUNNEL_PORT}"
+    else
+        print_success "Exoscale DB reachable directly"
+    fi
+fi
+
 # Sanity hints for local dev using Exoscale
 if [[ -z "${DATABASE_URL}" ]]; then
     print_warning "DATABASE_URL is not set. Set it to your Exoscale Postgres connection string in .env."
@@ -175,7 +224,8 @@ fi
 
 # Run database migrations/setup
 print_status "Setting up database tables..."
-poetry run python -c "from app.db import Base, engine; from app import models; Base.metadata.create_all(bind=engine)" || true
+# Append any DB init errors to backend.log to avoid noisy console failures
+poetry run python -c "from app.db import Base, engine; from app import models; Base.metadata.create_all(bind=engine)" >> backend.log 2>&1 || true
 
 # Ensure local directories exist for fallbacks (tiles/previews if S3 not reachable)
 mkdir -p uploads
@@ -191,17 +241,22 @@ print_status "Starting FastAPI server on http://localhost:8000"
 poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 > backend.log 2>&1 &
 BACKEND_PID=$!
 
-# Wait for backend to start
-sleep 5
-if check_port 8000; then
-    print_success "Backend API server started successfully"
-    print_success "API Documentation: http://localhost:8000/docs"
-    print_success "Health Check: http://localhost:8000/health"
-else
-    print_error "Failed to start backend server. Check backend/backend.log for details"
-    cat backend.log
-    exit 1
-fi
+# Wait for backend to start by polling health endpoint (up to 30s)
+print_status "Waiting for backend health..."
+for i in {1..30}; do
+    if curl -sSf http://127.0.0.1:8000/health >/dev/null 2>&1; then
+        print_success "Backend API server started successfully"
+        print_success "API Documentation: http://localhost:8000/docs"
+        print_success "Health Check: http://localhost:8000/health"
+        break
+    fi
+    sleep 1
+    if [ $i -eq 30 ]; then
+        print_error "Failed to start backend server (health check timed out). See backend/backend.log"
+        tail -n 200 backend.log || true
+        exit 1
+    fi
+done
 
 # 5. Start Frontend
 print_status "Starting Frontend development server..."

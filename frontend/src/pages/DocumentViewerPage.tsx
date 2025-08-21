@@ -119,7 +119,7 @@ export default function DocumentViewerPage() {
 			await documentsApi.deleteRedaction(documentId, redactionId)
 			queryClient.invalidateQueries(['document-redactions', documentId])
 			if (socketRef.current) {
-				socketRef.current.emit('delete_redaction', { document_id: documentId, redaction_id: String(redactionId) })
+				socketRef.current.emit('delete_redaction', { document_id: documentId, redaction_id: redactionId })
 			}
 			toast.success('Redaction deleted')
 		} catch (error: any) {

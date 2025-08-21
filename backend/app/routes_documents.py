@@ -14,6 +14,7 @@ from .models import (
     Group,
     GroupMember,
     ProcessingJob,
+    Redaction,
 )
 from .redaction import get_redaction_service
 from .routes_auth import get_current_user
@@ -121,7 +122,7 @@ async def upload_document(
             buffer.write(content)
         print(f"Test mode: stored locally: {file_path}")
     else:
-        # Production: try SOS first, then shared volume fallback
+        # Dev/Prod: try SOS first; if it fails, fallback to a writable local path
         try:
             upload_key = f"uploads/{file.filename}"
             upload_to_s3(
@@ -132,14 +133,22 @@ async def upload_document(
             )
             print(f"Uploaded {file.filename} to SOS: {upload_key}")
         except Exception as e:
-            # Fallback: save locally in shared volume
-            uploads_dir = Path("/app/uploads")
-            uploads_dir.mkdir(parents=True, exist_ok=True)
-            file_path = uploads_dir / file.filename
-            with open(file_path, "wb") as buffer:
-                buffer.write(content)
-            print(f"Failed to upload to SOS: {e}")
-            print(f"Stored locally: {file_path}")
+            # Fallback: in dev, write to project 'backend/uploads'; otherwise to container path
+            fallback_dir = (
+                (Path(__file__).resolve().parents[1] / "uploads")
+                if (os.getenv("APP_ENV", settings.env) == "dev")
+                else Path("/app/uploads")
+            )
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                file_path = fallback_dir / file.filename
+                with open(file_path, "wb") as buffer:
+                    buffer.write(content)
+                print(f"Failed to upload to SOS: {e}")
+                print(f"Stored locally: {file_path}")
+            except Exception as le:
+                # If even fallback fails, surface a clear error
+                raise HTTPException(status_code=500, detail=f"Upload failed: {le}")
 
     # Create document record
     document = Document(

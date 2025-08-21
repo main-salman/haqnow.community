@@ -12,6 +12,18 @@ REPO_URL="https://github.com/main-salman/haqnow.community.git"
 
 echo "📡 Connecting to server: $SERVER_IP"
 
+# Step 0: Commit and push local changes (tests must be green before you run this)
+echo "🧭 Ensuring local changes are committed and pushed..."
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "📝 Committing local changes..."
+    git add -A
+    git commit -m "chore(deploy): sync local changes before server deploy"
+else
+    echo "✅ No local changes to commit"
+fi
+echo "⬆️  Pushing to GitHub..."
+git push origin main
+
 # Step 1: Copy .env file to server
 echo "📁 Copying .env file to server..."
 scp -i "$SSH_KEY" .env ubuntu@$SERVER_IP:/tmp/
