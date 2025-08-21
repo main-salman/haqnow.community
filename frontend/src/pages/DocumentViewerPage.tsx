@@ -497,8 +497,8 @@ export default function DocumentViewerPage() {
 						commentMode={mode === 'comment'}
 						onRedactionCreate={handleCreateRedaction}
 						onAddCommentAt={handleViewerClickAddComment}
-						redactions={liveRedactions.length > 0 ? liveRedactions : (redactions || [])}
-						comments={liveComments.length > 0 ? liveComments : (comments || [])}
+						redactions={redactions || []}
+						comments={comments || []}
 						onRedactionUpdate={handleUpdateRedaction}
 						onRedactionDelete={handleDeleteRedaction}
 					/>

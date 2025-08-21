@@ -688,15 +688,22 @@ export default function DocumentViewer({
       pageComments.forEach((c) => {
           const wrapper = document.createElement('div')
           wrapper.style.pointerEvents = 'auto'
+          wrapper.style.position = 'absolute'
+          wrapper.style.zIndex = '9999'
 
           const pin = document.createElement('div')
-          pin.style.width = '12px'
-          pin.style.height = '12px'
-          pin.style.borderRadius = '9999px'
+          pin.style.width = '16px'
+          pin.style.height = '16px'
+          pin.style.borderRadius = '50%'
           pin.style.background = '#2563eb'
-          pin.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.35)'
+          pin.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.5), 0 0 10px rgba(37,99,235,0.3)'
           pin.style.cursor = 'pointer'
+          pin.style.border = '2px solid white'
+          pin.style.position = 'relative'
+          pin.style.zIndex = '10000'
           pin.title = c.content || 'Comment'
+
+          console.log('🔍 OSD: Creating comment pin with enhanced styling')
 
           const bubble = document.createElement('div')
           bubble.style.position = 'absolute'
@@ -761,7 +768,8 @@ export default function DocumentViewer({
       redactionsCount: redactions.length,
       pageNumber,
       showAnnotations,
-      showRedactions
+      showRedactions,
+      commentsData: comments.map(c => ({ id: c.id, x: c.x_position, y: c.y_position, page: c.page_number }))
     })
   }, [viewer, redactions, comments, pageNumber, showRedactions, showAnnotations])
 
