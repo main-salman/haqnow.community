@@ -693,10 +693,14 @@ async def get_document_tile(
     document_id: int, page_number: int, x: int, y: int, db: Session = Depends(get_db)
 ):
     """Serve individual tile file for OpenSeadragon viewer"""
+    import os
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    print(f"DEBUG: Requesting tile {document_id}/page_{page_number}/tile_{x}_{y}.webp")
 
     # Try to serve from S3 first
     try:
@@ -704,21 +708,34 @@ async def get_document_tile(
 
         settings = get_settings()
         tile_key = f"tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+        print(f"DEBUG: Trying S3 key: {tile_key}")
         tile_data = download_from_s3(settings.s3_bucket_tiles, tile_key)
+        print(f"DEBUG: Found tile in S3, size: {len(tile_data)} bytes")
         return Response(content=tile_data, media_type="image/webp")
-    except Exception:
+    except Exception as e:
+        print(f"DEBUG: S3 failed: {e}")
         pass
 
     # Fallback to local files
     local_path = (
         f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
     )
+    print(f"DEBUG: Checking local path: {local_path}")
+    print(f"DEBUG: Path exists: {os.path.exists(local_path)}")
+
     if os.path.exists(local_path):
-        with open(local_path, "rb") as f:
-            tile_data = f.read()
-        return Response(content=tile_data, media_type="image/webp")
+        try:
+            with open(local_path, "rb") as f:
+                tile_data = f.read()
+            print(f"DEBUG: Found local tile, size: {len(tile_data)} bytes")
+            return Response(content=tile_data, media_type="image/webp")
+        except Exception as e:
+            print(f"DEBUG: Failed to read local tile: {e}")
 
     # If tile not found, return 404
+    print(
+        f"DEBUG: Tile not found anywhere for {document_id}/page_{page_number}/tile_{x}_{y}.webp"
+    )
     raise HTTPException(status_code=404, detail="Tile not found")
 
 
