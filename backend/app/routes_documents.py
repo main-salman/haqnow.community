@@ -745,39 +745,109 @@ async def get_document_file(
 
 @router.get("/{document_id}/download")
 async def download_document(document_id: int, db: Session = Depends(get_db)):
-    """Download document - tries export first, falls back to original file."""
+    """Download document with redactions burned in."""
+    import os
+    from PIL import Image, ImageDraw
+    import fitz  # PyMuPDF
+    import io
+    from fastapi.responses import Response
+    
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Try to generate exported PDF first
+    # Check if there are any redactions
+    redactions = db.query(Redaction).filter(Redaction.document_id == document_id).all()
+    
+    # If no redactions, just redirect to original file
+    if not redactions:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/api/documents/{document_id}/file", status_code=302)
+
+    # Get original document file
+    original_file_paths = [
+        f"/app/uploads/{document.title}",
+        f"/app/uploads/{document_id}_{document.title}",
+        f"uploads/{document.title}",  # Fallback paths
+        f"uploads/{document_id}_{document.title}",
+    ]
+    
+    original_data = None
+    for path in original_file_paths:
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                original_data = f.read()
+            break
+    
+    if not original_data:
+        # No original file found, fallback to regular download
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/api/documents/{document_id}/file", status_code=302)
+
     try:
-        export_service = get_export_service()
-        result = await export_service.export_pdf(
-            document_id=document_id,
-            page_ranges=None,
-            include_redacted=True,
-            export_format="pdf",
-            quality="high",
+        # Create redacted PDF
+        pdf_doc = fitz.open(stream=original_data, filetype="pdf")
+        
+        # Group redactions by page
+        redactions_by_page = {}
+        for r in redactions:
+            page_num = r.page_number
+            if page_num not in redactions_by_page:
+                redactions_by_page[page_num] = []
+            redactions_by_page[page_num].append(r)
+        
+        # Apply redactions to each page
+        for page_num in range(len(pdf_doc)):
+            if page_num in redactions_by_page:
+                page = pdf_doc[page_num]
+                
+                # Get page dimensions
+                rect = page.rect
+                page_width = rect.width
+                page_height = rect.height
+                
+                # Apply redactions as black rectangles
+                for redaction in redactions_by_page[page_num]:
+                    # Convert relative coordinates to PDF coordinates
+                    # Assuming redactions are stored in a 2000x3000 coordinate system
+                    base_width = 2000
+                    base_height = 3000
+                    
+                    # Scale coordinates to actual page size
+                    x1 = (redaction.x_start / base_width) * page_width
+                    y1 = (redaction.y_start / base_height) * page_height
+                    x2 = (redaction.x_end / base_width) * page_width
+                    y2 = (redaction.y_end / base_height) * page_height
+                    
+                    # Create redaction rectangle
+                    redact_rect = fitz.Rect(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+                    
+                    # Add redaction annotation
+                    redact_annot = page.add_redact_annot(redact_rect)
+                    redact_annot.set_colors({"fill": [0, 0, 0]})  # Black fill
+                    
+                # Apply all redactions on this page
+                page.apply_redactions()
+        
+        # Generate the redacted PDF bytes
+        redacted_pdf_bytes = pdf_doc.tobytes()
+        pdf_doc.close()
+        
+        # Return the redacted PDF
+        return Response(
+            content=redacted_pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="redacted_{document.title}"'
+            }
         )
         
-        if result.get("success") and result.get("filename"):
-            # Redirect to the exported file
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(
-                url=f"/api/documents/{document_id}/exports/{result['filename']}", 
-                status_code=302
-            )
     except Exception as e:
-        print(f"[DOWNLOAD] Export failed for document {document_id}: {e}")
-
-    # Fallback: redirect to original file
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(
-        url=f"/api/documents/{document_id}/file", 
-        status_code=302
-    )
+        print(f"[DOWNLOAD] Failed to create redacted PDF for document {document_id}: {e}")
+        # Fallback to original file
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/api/documents/{document_id}/file", status_code=302)
 
 
 @router.get("/{document_id}/exports/{filename}")
