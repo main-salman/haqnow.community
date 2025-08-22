@@ -887,7 +887,7 @@ export default function DocumentViewer({
             rect = tiledImage.imageToViewportRectangle(imageRect)
           } else {
             // Fallback: treat coordinates as normalized viewport coordinates
-            rect = new OpenSeadragon.Rect(xRaw / 3000, yRaw / 3000, wRaw / 3000, hRaw / 3000)
+            rect = new OpenSeadragon.Rect(xRaw / 2550, yRaw / 3300, wRaw / 2550, hRaw / 3300)
           }
           try { viewer.addOverlay({ element: el, location: rect }) } catch {}
           overlaysRef.current.push({ type: 'redaction', el })
