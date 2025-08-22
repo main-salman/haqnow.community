@@ -21,6 +21,50 @@ class ExportService:
     def __init__(self):
         self.settings = get_settings()
 
+    def _get_page_image_from_thumbnails(
+        self, document_id: int, page_number: int
+    ) -> Optional[Image.Image]:
+        """Fallback: load pre-rendered page image from previews/thumbnails (S3 or local)."""
+        s3_client = None
+        try:
+            s3_client = get_s3_client()
+        except Exception:
+            s3_client = None
+        # Try S3 previews first (PNG)
+        if s3_client is not None:
+            try:
+                preview_key = f"previews/{document_id}/page_{page_number}.png"
+                resp = s3_client.get_object(
+                    Bucket=self.settings.s3_bucket_thumbnails, Key=preview_key
+                )
+                data = resp["Body"].read()
+                return Image.open(io.BytesIO(data))
+            except Exception:
+                pass
+            # Try thumbnails (WEBP)
+            try:
+                thumb_key = f"thumbnails/{document_id}/page_{page_number}.webp"
+                resp = s3_client.get_object(
+                    Bucket=self.settings.s3_bucket_thumbnails, Key=thumb_key
+                )
+                data = resp["Body"].read()
+                return Image.open(io.BytesIO(data))
+            except Exception:
+                pass
+        # Local fallbacks
+        local_preview = f"/srv/processed/previews/{document_id}/page_{page_number}.png"
+        local_thumb = f"/srv/processed/thumbnails/{document_id}/page_{page_number}.webp"
+        app_preview = f"/app/processed/previews/{document_id}/page_{page_number}.png"
+        app_thumb = f"/app/processed/thumbnails/{document_id}/page_{page_number}.webp"
+        for path in [app_preview, app_thumb, local_preview, local_thumb]:
+            try:
+                if os.path.exists(path) and os.path.isfile(path):
+                    with open(path, "rb") as f:
+                        return Image.open(io.BytesIO(f.read()))
+            except Exception:
+                continue
+        return None
+
     async def export_pdf(
         self,
         document_id: int,
@@ -239,6 +283,11 @@ class ExportService:
                         page_image = await self._get_original_page_image(
                             original_data, page_num, dpi
                         )
+                        if page_image is None:
+                            # Fallback: load thumbnails/previews
+                            page_image = self._get_page_image_from_thumbnails(
+                                document_id, page_num
+                            )
 
                     # Paint DB redactions onto the image to guarantee burn-in
                     if include_redacted and page_image is not None:
@@ -345,6 +394,10 @@ class ExportService:
                         page_image = await self._get_original_page_image(
                             original_data, page_num, dpi
                         )
+                        if page_image is None:
+                            page_image = self._get_page_image_from_thumbnails(
+                                document_id, page_num
+                            )
                         filename = f"page_{page_num:03d}.png"
 
                     if page_image:
