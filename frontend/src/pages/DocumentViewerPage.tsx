@@ -398,7 +398,7 @@ export default function DocumentViewerPage() {
 			}).then(() => {
 				toast.success('Comment added')
 				queryClient.invalidateQueries(['document-comments', documentId])
-				setMode('view') // Exit comment mode after adding
+				// Stay in comment mode for adding more comments
 			}).catch((err) => { logError('Comments', 'Failed to add via fallback', { err: err?.message, data: err?.response?.data }); toast.error('Failed to add comment') })
 
 			// emit live comment marker to others
@@ -429,7 +429,7 @@ export default function DocumentViewerPage() {
 			})
 			toast.success('Comment added')
 			queryClient.invalidateQueries(['document-comments', documentId])
-			setMode('view') // Exit comment mode after adding
+			// Stay in comment mode for adding more comments
 			setShowCommentPopup(false)
 			setCommentPopupText('')
 
