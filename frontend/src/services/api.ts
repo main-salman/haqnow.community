@@ -92,6 +92,13 @@ export const documentsApi = {
   get: (id: number) => axios.get<Document>(`/api/documents/${id}`),
   create: (data: Partial<Document>) => axios.post<Document>('/api/documents/', data),
   delete: (id: number) => axios.delete(`/api/documents/${id}`),
+  bulkUpload: (files: File[]) => {
+    const formData = new FormData()
+    files.forEach(file => formData.append('files', file))
+    return axios.post('/api/documents/bulk-upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
   // Authored content documents
   createContent: (data: { title: string; markdown: string; references?: number[] }) =>
     axios.post('/api/documents/content', data),

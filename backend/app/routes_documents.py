@@ -90,6 +90,95 @@ def create_presigned_upload(payload: PresignedUploadRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/bulk-upload")
+async def bulk_upload_documents(
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """Bulk upload multiple documents with staggered processing"""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    uploaded_docs = []
+
+    for file in files:
+        if not file.filename:
+            continue
+
+        try:
+            # Read file content
+            content = await file.read()
+
+            # Upload to SOS first, with local fallback (same logic as single upload)
+            from .config import get_settings
+            from .s3_client import upload_to_s3
+
+            settings = get_settings()
+
+            if os.getenv("PYTEST_CURRENT_TEST"):
+                # Test environment: save to local temp
+                uploads_dir = Path(__file__).resolve().parents[1] / "uploads"
+                uploads_dir.mkdir(exist_ok=True)
+                file_path = uploads_dir / file.filename
+                with open(file_path, "wb") as buffer:
+                    buffer.write(content)
+            else:
+                # Dev/Prod: try SOS first; if it fails, fallback to local
+                try:
+                    upload_key = f"uploads/{file.filename}"
+                    upload_to_s3(
+                        settings.s3_bucket_originals,
+                        upload_key,
+                        content,
+                        file.content_type or "application/octet-stream",
+                    )
+                except Exception:
+                    # Fallback to local storage
+                    fallback_dir = (
+                        (Path(__file__).resolve().parents[1] / "uploads")
+                        if (os.getenv("APP_ENV", settings.env) == "dev")
+                        else Path("/app/uploads")
+                    )
+                    try:
+                        fallback_dir.mkdir(parents=True, exist_ok=True)
+                        file_path = fallback_dir / file.filename
+                        with open(file_path, "wb") as buffer:
+                            buffer.write(content)
+                    except Exception as le:
+                        continue  # Skip this file if upload fails
+
+            # Create document record
+            document = Document(
+                title=file.filename,
+                description=f"Uploaded document: {file.filename}",
+                source="Bulk Upload",
+                language="en",
+                uploader_id=1,  # TODO: Get from authenticated user
+            )
+            db.add(document)
+            db.commit()
+            db.refresh(document)
+
+            uploaded_docs.append(document)
+
+        except Exception as e:
+            print(f"Failed to upload {file.filename}: {e}")
+            continue
+
+    # Enqueue processing jobs for all uploaded documents with staggered delays
+    for i, document in enumerate(uploaded_docs):
+        # Add delay to prevent overwhelming the worker
+        delay_seconds = i * 2  # 2 second delay between each document's processing
+        _enqueue_processing_jobs_with_delay(document.id, db, delay_seconds)
+
+    return {
+        "success": True,
+        "uploaded_count": len(uploaded_docs),
+        "total_files": len(files),
+        "documents": [{"id": doc.id, "title": doc.title} for doc in uploaded_docs],
+    }
+
+
 @router.post("/upload", response_model=DocumentOut)
 async def upload_document(
     file: UploadFile = File(...),
@@ -274,6 +363,13 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
 
 def _enqueue_processing_jobs(document_id: int, db: Session):
     """Enqueue background processing jobs for a document"""
+    _enqueue_processing_jobs_with_delay(document_id, db, 0)
+
+
+def _enqueue_processing_jobs_with_delay(
+    document_id: int, db: Session, delay_seconds: int = 0
+):
+    """Enqueue background processing jobs for a document with optional delay"""
     import os
 
     # In test environment, create job rows once and skip Celery dispatch to avoid sqlite flakiness
@@ -291,9 +387,10 @@ def _enqueue_processing_jobs(document_id: int, db: Session):
         db.add_all(batch)
         db.commit()
         return
+
     job_types = ["tiling", "thumbnails", "ocr"]
 
-    for job_type in job_types:
+    for i, job_type in enumerate(job_types):
         # Create job record
         job = ProcessingJob(
             document_id=document_id,
@@ -304,13 +401,30 @@ def _enqueue_processing_jobs(document_id: int, db: Session):
         db.commit()
         db.refresh(job)
 
-        # Enqueue Celery task
+        # Enqueue Celery task with staggered delay for bulk uploads
+        task_delay = delay_seconds + (i * 1)  # Additional 1s delay between job types
+
         if job_type == "tiling":
-            task = process_document_tiling.delay(document_id, job.id)
+            if task_delay > 0:
+                task = process_document_tiling.apply_async(
+                    args=[document_id, job.id], countdown=task_delay
+                )
+            else:
+                task = process_document_tiling.delay(document_id, job.id)
         elif job_type == "thumbnails":
-            task = process_document_thumbnails.delay(document_id, job.id)
+            if task_delay > 0:
+                task = process_document_thumbnails.apply_async(
+                    args=[document_id, job.id], countdown=task_delay
+                )
+            else:
+                task = process_document_thumbnails.delay(document_id, job.id)
         elif job_type == "ocr":
-            task = process_document_ocr.delay(document_id, job.id)
+            if task_delay > 0:
+                task = process_document_ocr.apply_async(
+                    args=[document_id, job.id], countdown=task_delay
+                )
+            else:
+                task = process_document_ocr.delay(document_id, job.id)
 
         # Update job with Celery task ID
         job.celery_task_id = task.id
@@ -746,12 +860,13 @@ async def get_document_file(
 @router.get("/{document_id}/download")
 async def download_document(document_id: int, db: Session = Depends(get_db)):
     """Download document with redactions burned in."""
-    import os
-    from PIL import Image, ImageDraw
-    import fitz  # PyMuPDF
     import io
+    import os
+
+    import fitz  # PyMuPDF
     from fastapi.responses import Response
-    
+    from PIL import Image, ImageDraw
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -759,11 +874,14 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
 
     # Check if there are any redactions
     redactions = db.query(Redaction).filter(Redaction.document_id == document_id).all()
-    
+
     # If no redactions, just redirect to original file
     if not redactions:
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=f"/api/documents/{document_id}/file", status_code=302)
+
+        return RedirectResponse(
+            url=f"/api/documents/{document_id}/file", status_code=302
+        )
 
     # Get original document file
     original_file_paths = [
@@ -772,23 +890,26 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
         f"uploads/{document.title}",  # Fallback paths
         f"uploads/{document_id}_{document.title}",
     ]
-    
+
     original_data = None
     for path in original_file_paths:
         if os.path.exists(path):
             with open(path, "rb") as f:
                 original_data = f.read()
             break
-    
+
     if not original_data:
         # No original file found, fallback to regular download
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=f"/api/documents/{document_id}/file", status_code=302)
+
+        return RedirectResponse(
+            url=f"/api/documents/{document_id}/file", status_code=302
+        )
 
     try:
         # Create redacted PDF
         pdf_doc = fitz.open(stream=original_data, filetype="pdf")
-        
+
         # Group redactions by page
         redactions_by_page = {}
         for r in redactions:
@@ -796,30 +917,32 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
             if page_num not in redactions_by_page:
                 redactions_by_page[page_num] = []
             redactions_by_page[page_num].append(r)
-        
+
         # Apply redactions to each page
         for page_num in range(len(pdf_doc)):
             if page_num in redactions_by_page:
                 page = pdf_doc[page_num]
-                
+
                 # Get page dimensions
                 rect = page.rect
                 page_width = rect.width
                 page_height = rect.height
-                
+
                 # Get viewer image dimensions for pixel-perfect coordinate scaling
                 # The redaction coordinates are stored relative to the viewer's image dimensions.
                 # These dimensions match the thumbnail/preview image served to the browser.
                 # For document 135, we empirically determined these are 2550 x 3300 pixels.
-                # 
+                #
                 # To update these dimensions for other documents, check:
                 # curl -s "https://community.haqnow.com/api/documents/{id}/thumbnail/0" | file -
                 # This should show: "PNG image data, WIDTH x HEIGHT"
                 viewer_width = 2550.0
                 viewer_height = 3300.0
-                
-                print(f"[DOWNLOAD] Using viewer dimensions: {viewer_width} x {viewer_height} for coordinate scaling")
-                
+
+                print(
+                    f"[DOWNLOAD] Using viewer dimensions: {viewer_width} x {viewer_height} for coordinate scaling"
+                )
+
                 # Apply redactions as black rectangles
                 for redaction in redactions_by_page[page_num]:
                     # Scale coordinates from viewer image pixels to PDF points
@@ -827,35 +950,42 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
                     y1 = (redaction.y_start / viewer_height) * page_height
                     x2 = (redaction.x_end / viewer_width) * page_width
                     y2 = (redaction.y_end / viewer_height) * page_height
-                    
+
                     # Create redaction rectangle
-                    redact_rect = fitz.Rect(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
-                    
+                    redact_rect = fitz.Rect(
+                        min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)
+                    )
+
                     # Add redaction annotation
                     redact_annot = page.add_redact_annot(redact_rect)
                     redact_annot.set_colors({"fill": [0, 0, 0]})  # Black fill
-                    
+
                 # Apply all redactions on this page
                 page.apply_redactions()
-        
+
         # Generate the redacted PDF bytes
         redacted_pdf_bytes = pdf_doc.tobytes()
         pdf_doc.close()
-        
+
         # Return the redacted PDF
         return Response(
             content=redacted_pdf_bytes,
             media_type="application/pdf",
             headers={
                 "Content-Disposition": f'attachment; filename="redacted_{document.title}"'
-            }
+            },
         )
-        
+
     except Exception as e:
-        print(f"[DOWNLOAD] Failed to create redacted PDF for document {document_id}: {e}")
+        print(
+            f"[DOWNLOAD] Failed to create redacted PDF for document {document_id}: {e}"
+        )
         # Fallback to original file
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=f"/api/documents/{document_id}/file", status_code=302)
+
+        return RedirectResponse(
+            url=f"/api/documents/{document_id}/file", status_code=302
+        )
 
 
 @router.get("/{document_id}/exports/{filename}")

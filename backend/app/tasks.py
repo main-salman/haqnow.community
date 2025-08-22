@@ -17,6 +17,8 @@ from .processing import (
 )
 from .s3_client import download_from_s3, upload_to_s3
 
+# from .conversion import convert_document_to_pdf  # TODO: Add when conversion is implemented
+
 
 def get_db_session() -> Session:
     """Get database session for Celery tasks"""
@@ -348,6 +350,97 @@ def process_document_ocr(self, document_id: int, job_id: int):
 
     except Exception as e:
         # Mark as failed
+        if "job" in locals():
+            job.status = "failed"
+            job.error_message = str(e)
+            job.completed_at = datetime.utcnow()
+            db.commit()
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True)
+def convert_document_to_pdf_task(self, document_id: int, job_id: int):
+    """Convert a document to PDF format for standardization"""
+    db = get_db_session()
+    settings = get_settings()
+
+    try:
+        # Get job and document
+        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise ValueError(f"Document {document_id} not found")
+
+        job.status = "running"
+        job.started_at = datetime.utcnow()
+        job.celery_task_id = self.request.id
+        db.commit()
+
+        # Check if document is already a PDF
+        if document.title.lower().endswith(".pdf"):
+            job.status = "completed"
+            job.progress = 100
+            job.completed_at = datetime.utcnow()
+            db.commit()
+            return {"status": "skipped", "reason": "Document is already PDF"}
+
+        # Load original file
+        file_data = _load_original_file_bytes(settings, document)
+
+        job.progress = 20
+        db.commit()
+        self.update_state(state="PROGRESS", meta={"progress": 20})
+
+        # Convert to PDF
+        print(f"Converting {document.title} to PDF...")
+        pdf_data, pdf_filename = convert_document_to_pdf(file_data, document.title)
+
+        job.progress = 70
+        db.commit()
+        self.update_state(state="PROGRESS", meta={"progress": 70})
+
+        # Store converted PDF
+        try:
+            # Try to upload to S3 first
+            s3_key = f"documents/{document_id}/{pdf_filename}"
+            upload_to_s3(settings.s3_bucket_name, s3_key, pdf_data, "application/pdf")
+            print(f"Uploaded converted PDF to S3: {s3_key}")
+        except Exception as e:
+            # Fall back to local storage
+            print(f"S3 upload failed, storing locally: {e}")
+            import os
+
+            local_dir = f"/srv/uploads"
+            os.makedirs(local_dir, exist_ok=True)
+            local_path = os.path.join(local_dir, f"{document_id}_{pdf_filename}")
+            with open(local_path, "wb") as f:
+                f.write(pdf_data)
+            print(f"Stored converted PDF locally: {local_path}")
+
+        # Update document title to reflect PDF conversion
+        original_title = document.title
+        document.title = pdf_filename
+
+        job.progress = 100
+        job.status = "completed"
+        job.completed_at = datetime.utcnow()
+        db.commit()
+
+        print(f"✅ Document conversion completed: {original_title} -> {pdf_filename}")
+        return {
+            "status": "completed",
+            "original_filename": original_title,
+            "converted_filename": pdf_filename,
+            "size": len(pdf_data),
+        }
+
+    except Exception as e:
+        print(f"❌ Document conversion failed: {e}")
         if "job" in locals():
             job.status = "failed"
             job.error_message = str(e)

@@ -111,9 +111,70 @@ export default function DocumentUpload({ isOpen, onClose }: DocumentUploadProps)
 
   const startUpload = () => {
     const pendingFiles = files.filter(f => f.status === 'pending')
-    pendingFiles.forEach(file => {
-      uploadMutation.mutate(file)
-    })
+
+    if (pendingFiles.length > 5) {
+      // Use bulk upload for large batches
+      startBulkUpload(pendingFiles)
+    } else {
+      // Use individual uploads for small batches with staggered timing
+      pendingFiles.forEach((file, index) => {
+        setTimeout(() => {
+          uploadMutation.mutate(file)
+        }, index * 200) // 200ms delay between uploads
+      })
+    }
+  }
+
+  const startBulkUpload = async (pendingFiles: UploadFile[]) => {
+    try {
+      // Mark all as uploading
+      setFiles(prev => prev.map(f =>
+        pendingFiles.some(pf => pf.id === f.id)
+          ? { ...f, status: 'uploading' as const, progress: 10 }
+          : f
+      ))
+
+      const fileList = pendingFiles.map(uf => uf.file)
+      const response = await axios.post('/api/documents/bulk-upload', (() => {
+        const formData = new FormData()
+        fileList.forEach(file => formData.append('files', file))
+        return formData
+      })(), {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            setFiles(prev => prev.map(f =>
+              pendingFiles.some(pf => pf.id === f.id)
+                ? { ...f, progress: Math.max(f.progress, progress) }
+                : f
+            ))
+          }
+        }
+      })
+
+      // Mark all as success
+      setFiles(prev => prev.map(f =>
+        pendingFiles.some(pf => pf.id === f.id)
+          ? { ...f, status: 'success' as const, progress: 100 }
+          : f
+      ))
+
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success(`${response.data.uploaded_count} documents uploaded successfully! Processing queued.`)
+
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || error.message || 'Bulk upload failed'
+
+      // Mark all as error
+      setFiles(prev => prev.map(f =>
+        pendingFiles.some(pf => pf.id === f.id)
+          ? { ...f, status: 'error' as const, error: errorMessage }
+          : f
+      ))
+
+      toast.error(`Bulk upload failed: ${errorMessage}`)
+    }
   }
 
   const clearCompleted = () => {
@@ -176,7 +237,8 @@ export default function DocumentUpload({ isOpen, onClose }: DocumentUploadProps)
               Drop files here or click to browse
             </h3>
             <p className="text-sm text-gray-500 mb-4">
-              Support for PDF, DOC, DOCX, TXT, and image files up to 100MB each
+              Support for PDF, DOC, DOCX, TXT, and image files up to 100MB each<br />
+              <strong>Bulk upload supported</strong> - select multiple files at once
             </p>
             <input
               type="file"
