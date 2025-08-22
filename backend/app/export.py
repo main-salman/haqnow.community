@@ -44,15 +44,48 @@ class ExportService:
             Dict with export info and download URL
         """
         try:
+            # Get document title for key inference
+            doc_title = None
+            try:
+                db = SessionLocal()
+                doc = db.query(Document).filter(Document.id == document_id).first()
+                if doc:
+                    doc_title = doc.title
+            except Exception:
+                doc_title = None
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+
             # Try to load original from S3; if not available, use local uploads path
             original_data = None
             try:
                 s3_client = get_s3_client()
-                original_key = f"uploads/{document_id}/original"
-                response = s3_client.get_object(
-                    Bucket=self.settings.s3_bucket_originals, Key=original_key
-                )
-                original_data = response["Body"].read()
+                # Try multiple key variants
+                s3_keys = [
+                    f"uploads/{document_id}/original",
+                ]
+                if doc_title:
+                    s3_keys.extend(
+                        [
+                            f"uploads/{doc_title}",
+                            f"{document_id}/{doc_title}",
+                        ]
+                    )
+                last_err = None
+                for key in s3_keys:
+                    try:
+                        response = s3_client.get_object(
+                            Bucket=self.settings.s3_bucket_originals, Key=key
+                        )
+                        original_data = response["Body"].read()
+                        break
+                    except Exception as se:
+                        last_err = se
+                if original_data is None and last_err:
+                    raise last_err
             except Exception:
                 pass
 
@@ -100,11 +133,23 @@ class ExportService:
             if original_data is None:
                 return {"success": False, "error": "Original document not found"}
 
+            # Determine file type by title; default to PDF
+            is_pdf = True
+            title_lower = (doc_title or "").lower()
+            if not title_lower.endswith(".pdf"):
+                is_pdf = False
+
             # Get total page count
-            pages = rasterize_pdf_pages(
-                original_data, dpi=150
-            )  # Lower DPI for page counting
-            total_pages = len(pages)
+            if is_pdf:
+                try:
+                    pages = rasterize_pdf_pages(original_data, dpi=150)
+                    total_pages = len(pages)
+                except Exception:
+                    # Fallback: treat as single-page image
+                    is_pdf = False
+                    total_pages = 1
+            else:
+                total_pages = 1
 
             # Determine which pages to export
             if page_ranges is None:
@@ -381,20 +426,26 @@ class ExportService:
     async def _get_original_page_image(
         self, original_data: bytes, page_number: int, dpi: int
     ) -> Optional[Image.Image]:
-        """Get original version of a page image"""
+        """Get original version of a page image (supports PDFs and images)."""
+        # Try PDF rasterization first
         try:
-            # Rasterize the specific page
             pages = rasterize_pdf_pages(original_data, dpi=dpi)
+            if page_number < len(pages):
+                _, page_image_data = pages[page_number]
+                return Image.open(io.BytesIO(page_image_data))
+        except Exception:
+            pass
+        # Fallback: treat original as a single image
+        try:
+            from .processing import rasterize_image
 
-            if page_number >= len(pages):
-                return None
-
-            page_num, page_image_data = pages[page_number]
-            return Image.open(io.BytesIO(page_image_data))
-
+            pages = rasterize_image(original_data, dpi=dpi)
+            if pages:
+                _, page_image_data = pages[0]
+                return Image.open(io.BytesIO(page_image_data))
         except Exception as e:
             logger.warning(f"Failed to get original page {page_number}: {e}")
-            return None
+        return None
 
     def _image_to_bytes(self, image: Image.Image, format: str = "PNG") -> bytes:
         """Convert PIL Image to bytes"""
