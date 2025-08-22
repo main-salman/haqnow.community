@@ -677,6 +677,8 @@ export default function DocumentViewer({
     // Add redaction drawing handlers
     if (redactionMode) {
       console.log('🔍 OSD: Setting up redaction handlers')
+      // Ensure suppression is reset when entering redact mode
+      suppressCanvasInteractionsRef.current = false
 
       // Disable pan/zoom during redaction mode
       osdViewer.panHorizontal = false
@@ -752,12 +754,23 @@ export default function DocumentViewer({
 
           const startImage = item.viewportToImageCoordinates(startViewport)
           const endImage = item.viewportToImageCoordinates(endViewport)
+          // Clamp to bounds
+          let maxW = 3000
+          let maxH = 4000
+          try {
+            const size = (item as any).getContentSize?.()
+            if (size && typeof size.x === 'number' && typeof size.y === 'number') { maxW = size.x; maxH = size.y }
+          } catch {}
 
           // Calculate redaction coordinates in IMAGE PIXELS
-          const x_start = Math.min(startImage.x, endImage.x)
-          const y_start = Math.min(startImage.y, endImage.y)
-          const x_end = Math.max(startImage.x, endImage.x)
-          const y_end = Math.max(startImage.y, endImage.y)
+          let x_start = Math.min(startImage.x, endImage.x)
+          let y_start = Math.min(startImage.y, endImage.y)
+          let x_end = Math.max(startImage.x, endImage.x)
+          let y_end = Math.max(startImage.y, endImage.y)
+          x_start = Math.max(0, Math.min(maxW, x_start))
+          y_start = Math.max(0, Math.min(maxH, y_start))
+          x_end = Math.max(0, Math.min(maxW, x_end))
+          y_end = Math.max(0, Math.min(maxH, y_end))
 
           console.log('🎯 OSD: Final redaction coords:', { x_start, y_start, x_end, y_end, width: x_end - x_start, height: y_end - y_start })
 
@@ -1132,12 +1145,24 @@ export default function DocumentViewer({
         const { id, startX, startY, orig } = draggingRef.current
         const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
         const img = tiledImageMove ? tiledImageMove.viewportToImageCoordinates(vp) : { x: vp.x * 3000, y: vp.y * 3000 }
+        // Bounds
+        let maxW = 3000
+        let maxH = 4000
+        try {
+          const size = (tiledImageMove as any).getContentSize?.()
+          if (size && typeof size.x === 'number' && typeof size.y === 'number') { maxW = size.x; maxH = size.y }
+        } catch {}
         const dx = img.x - startX
         const dy = img.y - startY
-        const x1 = orig.x1 + dx
-        const y1 = orig.y1 + dy
-        const x2 = orig.x2 + dx
-        const y2 = orig.y2 + dy
+        let x1 = orig.x1 + dx
+        let y1 = orig.y1 + dy
+        let x2 = orig.x2 + dx
+        let y2 = orig.y2 + dy
+        // Clamp
+        x1 = Math.max(0, Math.min(maxW, x1))
+        y1 = Math.max(0, Math.min(maxH, y1))
+        x2 = Math.max(0, Math.min(maxW, x2))
+        y2 = Math.max(0, Math.min(maxH, y2))
         // Live-update overlay position visually without API call
         try {
           const rect = tiledImageMove.imageToViewportRectangle(new OpenSeadragon.Rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)))
@@ -1151,12 +1176,22 @@ export default function DocumentViewer({
         const { id, startX, startY, orig } = resizingRef.current
         const vp = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
         const img = tiledImageMove ? tiledImageMove.viewportToImageCoordinates(vp) : { x: vp.x * 3000, y: vp.y * 3000 }
+        // Bounds
+        let maxW = 3000
+        let maxH = 4000
+        try {
+          const size = (tiledImageMove as any).getContentSize?.()
+          if (size && typeof size.x === 'number' && typeof size.y === 'number') { maxW = size.x; maxH = size.y }
+        } catch {}
         const dx = img.x - startX
         const dy = img.y - startY
         const x1 = orig.x1
         const y1 = orig.y1
-        const x2 = Math.max(x1 + 2, orig.x2 + dx)
-        const y2 = Math.max(y1 + 2, orig.y2 + dy)
+        let x2 = Math.max(x1 + 2, orig.x2 + dx)
+        let y2 = Math.max(y1 + 2, orig.y2 + dy)
+        // Clamp
+        x2 = Math.max(0, Math.min(maxW, x2))
+        y2 = Math.max(0, Math.min(maxH, y2))
         try {
           const rect = tiledImageMove.imageToViewportRectangle(new OpenSeadragon.Rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)))
           if (activeOverlayElRef.current) {
