@@ -453,10 +453,16 @@ async def delete_redaction(
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if (
-        red.user_id != current_user.id
-        and current_user.role not in ["admin", "manager"]
-        and doc.uploader_id != current_user.id
+    # Allow deletion if:
+    #  - user created the redaction, OR
+    #  - user is admin/manager, OR
+    #  - user uploaded the document, OR
+    #  - user has edit access via sharing
+    if not (
+        red.user_id == current_user.id
+        or current_user.role in ["admin", "manager"]
+        or doc.uploader_id == current_user.id
+        or _user_can_edit_document(db, document_id, current_user)
     ):
         raise HTTPException(status_code=403, detail="Not allowed")
     print(

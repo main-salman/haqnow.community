@@ -92,6 +92,9 @@ export default function DocumentViewerPage() {
 		try {
 			if (!r.id) return
 			logEvent('Redactions', 'Updating', { id: r.id, x_start: r.x_start, y_start: r.y_start, x_end: r.x_end, y_end: r.y_end })
+			// Optimistic update
+			const prev = queryClient.getQueryData<any[]>(['document-redactions', documentId]) || []
+			queryClient.setQueryData(['document-redactions', documentId], prev.map((x: any) => x.id === r.id ? { ...x, ...r } : x))
 			await documentsApi.updateRedaction(documentId, r.id, {
 				x_start: r.x_start,
 				y_start: r.y_start,
@@ -105,6 +108,8 @@ export default function DocumentViewerPage() {
 			}
 		} catch (error: any) {
 			logError('Redactions', 'Failed to update', { error: error?.message, response: error?.response?.data })
+			// Revert on failure
+			queryClient.invalidateQueries(['document-redactions', documentId])
 		}
 	}
 
@@ -116,6 +121,9 @@ export default function DocumentViewerPage() {
 
 		try {
 			logEvent('Redactions', 'Deleting', { id: redactionId })
+			// Optimistic remove
+			const prev = queryClient.getQueryData<any[]>(['document-redactions', documentId]) || []
+			queryClient.setQueryData(['document-redactions', documentId], prev.filter((x: any) => x.id !== redactionId))
 			await documentsApi.deleteRedaction(documentId, redactionId)
 			queryClient.invalidateQueries(['document-redactions', documentId])
 			if (socketRef.current) {
@@ -131,6 +139,8 @@ export default function DocumentViewerPage() {
 				toast.success('Redaction deleted')
 			} else {
 				toast.error('Failed to delete redaction')
+				// Revert optimistic removal
+				queryClient.invalidateQueries(['document-redactions', documentId])
 			}
 		} finally {
 			setDeletingRedactions(prev => {
