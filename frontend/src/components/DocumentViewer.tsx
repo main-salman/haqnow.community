@@ -916,7 +916,7 @@ export default function DocumentViewer({
             // Disable redaction drawing when interacting with existing redaction
             isDrawingRef.current = false
             suppressCanvasInteractionsRef.current = true
-            if (viewer) viewer.setMouseNavEnabled(false)
+            try { if (viewer && (viewer as any).setMouseNavEnabled && (viewer as any).tracker) { (viewer as any).setMouseNavEnabled(false) } } catch {}
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(e.clientX, e.clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
@@ -933,9 +933,7 @@ export default function DocumentViewer({
             suppressCanvasInteractionsRef.current = true
 
             // Disable OpenSeadragon mouse tracking during resize
-            if (viewer) {
-              viewer.setMouseNavEnabled(false)
-            }
+            try { if (viewer && (viewer as any).setMouseNavEnabled && (viewer as any).tracker) { (viewer as any).setMouseNavEnabled(false) } } catch {}
 
             const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((e as MouseEvent).clientX, (e as MouseEvent).clientY))
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
@@ -1163,9 +1161,7 @@ export default function DocumentViewer({
     }
     const onUp = () => {
       // Re-enable OpenSeadragon mouse tracking
-      if (viewer) {
-        viewer.setMouseNavEnabled(true)
-      }
+      try { if (viewer && (viewer as any).setMouseNavEnabled && (viewer as any).tracker) { (viewer as any).setMouseNavEnabled(true) } } catch {}
       suppressCanvasInteractionsRef.current = false
       // Commit pending update once on mouseup
       if (pendingUpdateRef.current) {

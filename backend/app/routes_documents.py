@@ -707,8 +707,10 @@ async def get_document_file(
         )
         pass
 
-    # Fallback to local file (shared volume) - try multiple possible paths
+    # Fallback to local file (shared volume) - try multiple possible paths, include container path
     candidate_paths = [
+        f"/app/uploads/{document_id}_{document.title}",
+        f"/app/uploads/{document.title}",
         f"/app/uploads/{document_id}_{document.title}",
         f"/app/uploads/{document.title}",
         f"/srv/backend/uploads/{document_id}_{document.title}",
