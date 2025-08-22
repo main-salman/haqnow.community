@@ -536,6 +536,12 @@ export default function DocumentViewer({
       if (redactionMode) return
       if (!commentMode) return
 
+      // If clicking directly on a comment pin, don't open inline input
+      const targetEl = event.originalEvent?.target as HTMLElement | undefined
+      if (targetEl && (targetEl.getAttribute('data-testid') === 'comment-pin' || targetEl.closest('[data-testid="comment-pin"]'))) {
+        return
+      }
+
       const item = osdViewer.world.getItemAt(0)
       if (!item) return
       const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
@@ -546,7 +552,7 @@ export default function DocumentViewer({
       const screenY = event.originalEvent.clientY - viewerRect.top
 
       // Check if we clicked near an existing comment (within 50 pixels)
-      const clickRadius = 50
+      const clickRadius = 120
       const nearbyComment = comments.find(c => {
         if (c.page_number !== pageNumber) return false
         const distance = Math.sqrt(
@@ -999,6 +1005,7 @@ export default function DocumentViewer({
           pin.style.position = 'relative'
           pin.style.zIndex = '10000'
           pin.title = c.content || 'Comment'
+          pin.setAttribute('data-testid', 'comment-pin')
 
           // Enhanced styling applied
 
