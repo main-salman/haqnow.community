@@ -484,7 +484,7 @@ export default function DocumentViewer({
     const osdViewer = OpenSeadragon({
       element: viewerRef.current,
       prefixUrl: '/openseadragon-images/',
-      tileSources: `/api/documents/${documentId}/tiles/page_${pageNumber}/`,
+      tileSources: `/api/documents/${documentId}/tiles/page_${pageNumber}.dzi`,
       showNavigationControl: false,
       showZoomControl: false,
       showHomeControl: false,

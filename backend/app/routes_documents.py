@@ -695,6 +695,34 @@ async def list_document_exports(document_id: int, db: Session = Depends(get_db))
     return result
 
 
+@router.get("/{document_id}/tiles/page_{page_number}.dzi_files/{level}/{x}_{y}.webp")
+@router.head("/{document_id}/tiles/page_{page_number}.dzi_files/{level}/{x}_{y}.webp")
+async def get_document_tile_dzi(
+    document_id: int, page_number: int, level: int, x: int, y: int, db: Session = Depends(get_db)
+):
+    """Serve individual tile file for OpenSeadragon DZI viewer"""
+    import os
+
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # For DZI, level 0 corresponds to our tile structure
+    local_path = f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+    
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "rb") as f:
+                tile_data = f.read()
+            return Response(content=tile_data, media_type="image/webp")
+        except Exception:
+            pass
+
+    # If tile not found, return 404
+    raise HTTPException(status_code=404, detail="Tile not found")
+
+
 @router.get("/{document_id}/tiles/page_{page_number}/tile_{x}_{y}.webp")
 @router.head("/{document_id}/tiles/page_{page_number}/tile_{x}_{y}.webp")
 async def get_document_tile(
@@ -736,6 +764,33 @@ async def get_document_tile(
     raise HTTPException(status_code=404, detail="Tile not found")
 
 
+@router.get("/{document_id}/tiles/page_{page_number}.dzi")
+async def get_document_dzi(
+    document_id: int, page_number: int, db: Session = Depends(get_db)
+):
+    """Serve Deep Zoom Image descriptor for OpenSeadragon"""
+    from fastapi.responses import Response
+    import os
+
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check if tiles exist for this document/page
+    tile_dir = f"/srv/processed/tiles/{document_id}/page_{page_number}"
+    if not os.path.exists(tile_dir):
+        raise HTTPException(status_code=404, detail="Tiles not found")
+
+    # Return DZI XML descriptor
+    dzi_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Image TileSize="256" Overlap="1" Format="webp" xmlns="http://schemas.microsoft.com/deepzoom/2008">
+    <Size Width="2550" Height="3300"/>
+</Image>'''
+    
+    return Response(content=dzi_xml, media_type="application/xml")
+
+
 @router.get("/{document_id}/tiles/page_{page_number}/")
 async def get_document_tiles(
     document_id: int, page_number: int, db: Session = Depends(get_db)
@@ -761,19 +816,8 @@ async def get_document_tiles(
             "overlap": 1,
         }
 
-    # Return proper tile source configuration for OpenSeadragon
-    return {
-        "type": "legacy-image-pyramid",
-        "levels": [
-            {
-                "url": f"/api/documents/{document_id}/tiles/page_{page_number}/tile_",
-                "width": 2550,
-                "height": 3300,
-                "tileSize": 256,
-                "overlap": 1,
-            }
-        ],
-    }
+    # Return DZI tile source URL
+    return f"/api/documents/{document_id}/tiles/page_{page_number}.dzi"
 
 
 @router.get("/{document_id}/thumbnail/{page_number}")
