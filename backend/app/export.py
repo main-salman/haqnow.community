@@ -57,8 +57,10 @@ class ExportService:
                 pass
 
             if original_data is None:
-                # Attempt local path fallbacks
+                # Attempt local path fallbacks (container paths)
                 candidates = [
+                    f"/app/uploads/{document_id}.pdf",
+                    f"/app/uploads/{document_id}",
                     f"/srv/backend/uploads/{document_id}.pdf",
                     f"/srv/backend/uploads/{document_id}",
                 ]

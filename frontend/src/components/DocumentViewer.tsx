@@ -763,10 +763,12 @@ export default function DocumentViewer({
       pageRedactions.forEach((r) => {
           const el = document.createElement('div')
           el.setAttribute('data-testid', 'redaction-overlay')
+          el.setAttribute('data-redaction-id', String((r as any).id ?? ''))
           el.className = (el.className ? el.className + ' ' : '') + 'redaction-rectangle'
           el.style.background = 'rgba(0,0,0,0.9)'
           el.style.border = '1px solid rgba(0,0,0,1)'
           el.style.pointerEvents = 'auto'
+          el.style.touchAction = 'none'
           el.style.cursor = 'move'
           el.style.position = 'relative'
           el.style.zIndex = '10000'
@@ -798,6 +800,7 @@ export default function DocumentViewer({
           handle.style.border = '1px solid #000000'
           handle.style.cursor = 'nwse-resize'
           handle.style.zIndex = '10002'
+          handle.style.touchAction = 'none'
           el.appendChild(handle)
 
           // Add delete toolbar (top-right)
@@ -823,6 +826,7 @@ export default function DocumentViewer({
           del.style.justifyContent = 'center'
           del.style.lineHeight = '1'
           del.style.pointerEvents = 'auto'
+          del.style.touchAction = 'none'
           el.appendChild(del)
 
           // Drag/resize handlers (image pixel coordinates)
@@ -840,7 +844,8 @@ export default function DocumentViewer({
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
             activeOverlayElRef.current = el
-            logEvent('Redactions', 'Start drag', { id, imgX: imgPt.x, imgY: imgPt.y })
+            logEvent('Redactions', 'Start drag', { id, imgX: imgPt.x, imgY: imgPt.y, clientX: e.clientX, clientY: e.clientY })
+            try { (el as HTMLElement).style.boxShadow = '0 0 0 2px rgba(59,130,246,0.6) inset' } catch {}
           })
           handle.addEventListener('mousedown', (e) => {
             if (!id) return
@@ -859,7 +864,8 @@ export default function DocumentViewer({
             const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
             resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig: getImageRect() }
             activeOverlayElRef.current = el
-            logEvent('Redactions', 'Start resize', { id, imgX: imgPt.x, imgY: imgPt.y })
+            logEvent('Redactions', 'Start resize', { id, imgX: imgPt.x, imgY: imgPt.y, clientX: (e as MouseEvent).clientX, clientY: (e as MouseEvent).clientY })
+            try { (el as HTMLElement).style.boxShadow = '0 0 0 2px rgba(59,130,246,0.6) inset' } catch {}
           })
 
           del.addEventListener('click', (e) => {
@@ -868,7 +874,7 @@ export default function DocumentViewer({
             // Suppress OSD interactions during delete click
             suppressCanvasInteractionsRef.current = true
             if (!id) return
-            logEvent('Redactions', 'Delete clicked', { id })
+            logEvent('Redactions', 'Delete clicked', { id, el: el.getAttribute('data-redaction-id') })
             if (confirm('Delete this redaction?')) {
               onRedactionDelete?.(id)
             }

@@ -742,20 +742,25 @@ async def get_document_file(
 
 @router.get("/{document_id}/download")
 async def download_document(document_id: int, db: Session = Depends(get_db)):
-    """Download original document file"""
+    """Generate and return a redacted PDF download link (burned-in)."""
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # For now, return document info
-    # In production, this would serve the actual file
-    return {
-        "success": True,
-        "document_id": document_id,
-        "filename": document.title,
-        "download_url": f"/api/documents/{document_id}/file",
-    }
+    export_service = get_export_service()
+    result = await export_service.export_pdf(
+        document_id=document_id,
+        page_ranges=None,
+        include_redacted=True,
+        export_format="pdf",
+        quality="high",
+    )
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Export failed")
+        )
+    return result
 
 
 @router.post("/{document_id}/comments")
