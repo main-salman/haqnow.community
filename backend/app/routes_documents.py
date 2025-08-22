@@ -402,8 +402,20 @@ def _enqueue_processing_jobs_with_delay(
         db.commit()
         db.refresh(job)
 
-        # Enqueue Celery task with staggered delay for bulk uploads
-        task_delay = delay_seconds + (i * 1)  # Additional 1s delay between job types
+        # Calculate delay: conversion starts first, others wait for conversion to complete
+        document = db.query(Document).filter(Document.id == document_id).first()
+        needs_conversion = not document.title.lower().endswith(".pdf")
+
+        if job_type == "conversion":
+            task_delay = delay_seconds
+        else:
+            # If document needs conversion, other jobs wait longer to ensure conversion completes
+            base_delay = (
+                15 if needs_conversion else 2
+            )  # 15 seconds for conversion, 2 for PDFs
+            task_delay = (
+                delay_seconds + base_delay + (i * 2)
+            )  # Additional stagger between job types
 
         if job_type == "conversion":
             if task_delay > 0:

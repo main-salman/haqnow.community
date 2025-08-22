@@ -25,9 +25,9 @@ def get_db_session() -> Session:
 
 
 def _load_processing_file_bytes(settings, document: Document) -> bytes:
-    """Load the appropriate file for processing (converted PDF if available, original otherwise)."""
-    # For Word documents, try to load the converted PDF first
-    if document.title.lower().endswith((".doc", ".docx")):
+    """Load the appropriate file for processing (always prefer converted PDF if available)."""
+    # For ALL non-PDF documents, try to load the converted PDF first
+    if not document.title.lower().endswith(".pdf"):
         # Try to find converted PDF
         converted_filename = f"{document.id}_{document.title.rsplit('.', 1)[0]}.pdf"
         converted_paths = [
@@ -39,6 +39,7 @@ def _load_processing_file_bytes(settings, document: Document) -> bytes:
         for path in converted_paths:
             try:
                 with open(path, "rb") as f:
+                    print(f"Using converted PDF: {path}")
                     return f.read()
             except FileNotFoundError:
                 continue
@@ -48,7 +49,7 @@ def _load_processing_file_bytes(settings, document: Document) -> bytes:
             f"Warning: No converted PDF found for {document.title}, using original file loading"
         )
 
-    # Use original file loading for PDFs and other formats, or as fallback
+    # Use original file loading for PDFs and as fallback
     return _load_original_file_bytes(settings, document)
 
 
@@ -124,11 +125,19 @@ def process_document_tiling(self, document_id: int, job_id: int):
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 20})
 
-        # Rasterize pages - treat converted Word docs as PDFs
-        if document.title.lower().endswith((".pdf", ".doc", ".docx")):
+        # Rasterize pages - all documents should be PDFs after conversion
+        # Only use image rasterization for formats that definitely can't be converted to PDF
+        if document.title.lower().endswith(
+            (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt")
+        ):
             pages = rasterize_pdf_pages(file_data, dpi=300)
         else:
-            pages = rasterize_image(file_data, dpi=300)
+            # For pure image files that weren't converted, try PDF first (in case they were converted)
+            try:
+                pages = rasterize_pdf_pages(file_data, dpi=300)
+            except Exception:
+                # Fallback to image processing
+                pages = rasterize_image(file_data, dpi=300)
 
         job.progress = 50
         db.commit()
@@ -212,11 +221,19 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 25})
 
-        # Rasterize pages - treat converted Word docs as PDFs
-        if document.title.lower().endswith((".pdf", ".doc", ".docx")):
+        # Rasterize pages - all documents should be PDFs after conversion
+        # Only use image rasterization for formats that definitely can't be converted to PDF
+        if document.title.lower().endswith(
+            (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt")
+        ):
             pages = rasterize_pdf_pages(file_data, dpi=300)
         else:
-            pages = rasterize_image(file_data, dpi=300)
+            # For pure image files that weren't converted, try PDF first (in case they were converted)
+            try:
+                pages = rasterize_pdf_pages(file_data, dpi=300)
+            except Exception:
+                # Fallback to image processing
+                pages = rasterize_image(file_data, dpi=300)
 
         job.progress = 50
         db.commit()
@@ -311,11 +328,19 @@ def process_document_ocr(self, document_id: int, job_id: int):
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 20})
 
-        # Rasterize pages - treat converted Word docs as PDFs
-        if document.title.lower().endswith((".pdf", ".doc", ".docx")):
+        # Rasterize pages - all documents should be PDFs after conversion
+        # Only use image rasterization for formats that definitely can't be converted to PDF
+        if document.title.lower().endswith(
+            (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt")
+        ):
             pages = rasterize_pdf_pages(file_data, dpi=300)
         else:
-            pages = rasterize_image(file_data, dpi=300)
+            # For pure image files that weren't converted, try PDF first (in case they were converted)
+            try:
+                pages = rasterize_pdf_pages(file_data, dpi=300)
+            except Exception:
+                # Fallback to image processing
+                pages = rasterize_image(file_data, dpi=300)
 
         job.progress = 40
         db.commit()
