@@ -485,9 +485,14 @@ export default function DocumentViewer({
       element: viewerRef.current,
       prefixUrl: '/openseadragon-images/',
       tileSources: {
-        type: 'image',
-        url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
-        buildPyramid: false,
+        type: 'legacy-image-pyramid',
+        levels: [{
+          url: `/api/documents/${documentId}/tiles/page_${pageNumber}/tile_`,
+          width: 2000,
+          height: 3000,
+        }],
+        tileSize: 256,
+        overlap: 1,
       },
       showNavigationControl: false,
       showZoomControl: false,
@@ -520,11 +525,28 @@ export default function DocumentViewer({
     const fallbackTimer = window.setTimeout(() => {
       try {
         const count = osdViewer.world.getItemCount()
-        if (count === 0) setUseImageFallback(true)
+        if (count === 0) {
+          console.log('🔄 OSD tile loading failed, trying simple image fallback...')
+          // Try simple image source as fallback
+          osdViewer.open({
+            type: 'image',
+            url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
+            buildPyramid: false,
+          })
+          // If that also fails, use image fallback
+          setTimeout(() => {
+            try {
+              const count2 = osdViewer.world.getItemCount()
+              if (count2 === 0) setUseImageFallback(true)
+            } catch {
+              setUseImageFallback(true)
+            }
+          }, 1000)
+        }
       } catch {
         setUseImageFallback(true)
       }
-    }, 1500)
+    }, 2000)
 
     // Handle single clicks to add comments (when in comment mode)
     osdViewer.addHandler('canvas-click', (event: any) => {
