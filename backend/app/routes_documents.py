@@ -695,22 +695,42 @@ async def list_document_exports(document_id: int, db: Session = Depends(get_db))
     return result
 
 
-@router.get("/{document_id}/tiles/page_{page_number}.dzi_files/{level}/{x}_{y}.webp")
-@router.head("/{document_id}/tiles/page_{page_number}.dzi_files/{level}/{x}_{y}.webp")
+@router.get("/{document_id}/tiles/page_{page_number}_files/{level}/{x}_{y}.webp")
+@router.head("/{document_id}/tiles/page_{page_number}_files/{level}/{x}_{y}.webp")
 async def get_document_tile_dzi(
-    document_id: int, page_number: int, level: int, x: int, y: int, db: Session = Depends(get_db)
+    document_id: int,
+    page_number: int,
+    level: int,
+    x: int,
+    y: int,
+    db: Session = Depends(get_db),
 ):
     """Serve individual tile file for OpenSeadragon DZI viewer"""
     import os
+
+    from fastapi.responses import Response
 
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # For DZI, level 0 corresponds to our tile structure
-    local_path = f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
-    
+    # Try to serve from S3 first
+    try:
+        from .s3_client import download_from_s3
+
+        settings = get_settings()
+        tile_key = f"tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+        tile_data = download_from_s3(settings.s3_bucket_tiles, tile_key)
+        return Response(content=tile_data, media_type="image/webp")
+    except Exception:
+        pass
+
+    # Fallback to local files - our tiles don't use levels, just x_y coordinates
+    local_path = (
+        f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+    )
+
     if os.path.exists(local_path):
         try:
             with open(local_path, "rb") as f:
@@ -769,8 +789,9 @@ async def get_document_dzi(
     document_id: int, page_number: int, db: Session = Depends(get_db)
 ):
     """Serve Deep Zoom Image descriptor for OpenSeadragon"""
-    from fastapi.responses import Response
     import os
+
+    from fastapi.responses import Response
 
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
@@ -783,11 +804,11 @@ async def get_document_dzi(
         raise HTTPException(status_code=404, detail="Tiles not found")
 
     # Return DZI XML descriptor
-    dzi_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+    dzi_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Image TileSize="256" Overlap="1" Format="webp" xmlns="http://schemas.microsoft.com/deepzoom/2008">
     <Size Width="2550" Height="3300"/>
-</Image>'''
-    
+</Image>"""
+
     return Response(content=dzi_xml, media_type="application/xml")
 
 
