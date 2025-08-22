@@ -417,38 +417,46 @@ def _enqueue_processing_jobs_with_delay(
                 delay_seconds + base_delay + (i * 2)
             )  # Additional stagger between job types
 
-        if job_type == "conversion":
-            if task_delay > 0:
-                task = convert_document_to_pdf_task.apply_async(
-                    args=[document_id, job.id], countdown=task_delay
-                )
-            else:
-                task = convert_document_to_pdf_task.delay(document_id, job.id)
-        elif job_type == "tiling":
-            if task_delay > 0:
-                task = process_document_tiling.apply_async(
-                    args=[document_id, job.id], countdown=task_delay
-                )
-            else:
-                task = process_document_tiling.delay(document_id, job.id)
-        elif job_type == "thumbnails":
-            if task_delay > 0:
-                task = process_document_thumbnails.apply_async(
-                    args=[document_id, job.id], countdown=task_delay
-                )
-            else:
-                task = process_document_thumbnails.delay(document_id, job.id)
-        elif job_type == "ocr":
-            if task_delay > 0:
-                task = process_document_ocr.apply_async(
-                    args=[document_id, job.id], countdown=task_delay
-                )
-            else:
-                task = process_document_ocr.delay(document_id, job.id)
+        try:
+            if job_type == "conversion":
+                if task_delay > 0:
+                    task = convert_document_to_pdf_task.apply_async(
+                        args=[document_id, job.id], countdown=task_delay
+                    )
+                else:
+                    task = convert_document_to_pdf_task.delay(document_id, job.id)
+            elif job_type == "tiling":
+                if task_delay > 0:
+                    task = process_document_tiling.apply_async(
+                        args=[document_id, job.id], countdown=task_delay
+                    )
+                else:
+                    task = process_document_tiling.delay(document_id, job.id)
+            elif job_type == "thumbnails":
+                if task_delay > 0:
+                    task = process_document_thumbnails.apply_async(
+                        args=[document_id, job.id], countdown=task_delay
+                    )
+                else:
+                    task = process_document_thumbnails.delay(document_id, job.id)
+            elif job_type == "ocr":
+                if task_delay > 0:
+                    task = process_document_ocr.apply_async(
+                        args=[document_id, job.id], countdown=task_delay
+                    )
+                else:
+                    task = process_document_ocr.delay(document_id, job.id)
 
-        # Update job with Celery task ID
-        job.celery_task_id = task.id
-        db.commit()
+            # Update job with Celery task ID
+            job.celery_task_id = task.id
+            db.commit()
+
+        except Exception as e:
+            # If task dispatch fails, mark job as failed and log the error
+            print(f"Failed to dispatch {job_type} task for document {document_id}: {e}")
+            job.status = "failed"
+            job.error_message = f"Failed to dispatch task: {str(e)}"
+            db.commit()
 
 
 @router.get("/", response_model=list[DocumentOut])
@@ -715,7 +723,7 @@ async def get_document_tile(
     local_path = (
         f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
     )
-    
+
     if os.path.exists(local_path):
         try:
             with open(local_path, "rb") as f:
