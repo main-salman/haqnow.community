@@ -688,6 +688,7 @@ async def list_document_exports(document_id: int, db: Session = Depends(get_db))
 
 
 @router.get("/{document_id}/tiles/page_{page_number}/tile_{x}_{y}.webp")
+@router.head("/{document_id}/tiles/page_{page_number}/tile_{x}_{y}.webp")
 async def get_document_tile(
     document_id: int, page_number: int, x: int, y: int, db: Session = Depends(get_db)
 ):
@@ -744,6 +745,7 @@ async def get_document_tiles(
 
 
 @router.get("/{document_id}/thumbnail/{page_number}")
+@router.head("/{document_id}/thumbnail/{page_number}")
 async def get_document_thumbnail(
     document_id: int, page_number: int, db: Session = Depends(get_db)
 ):
