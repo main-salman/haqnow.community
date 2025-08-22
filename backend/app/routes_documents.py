@@ -745,7 +745,7 @@ async def get_document_file(
 
 @router.get("/{document_id}/download")
 async def download_document(document_id: int, db: Session = Depends(get_db)):
-    """Generate and return a redacted PDF download link (burned-in)."""
+    """Generate and return a redacted PDF download (burned-in)."""
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -763,7 +763,18 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500, detail=result.get("error", "Export failed")
         )
-    return result
+
+    # Get the filename from the export result and redirect to the actual file endpoint
+    filename = result.get("filename")
+    if not filename:
+        raise HTTPException(status_code=500, detail="Export filename not found")
+
+    # Redirect to the actual file serving endpoint
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(
+        url=f"/api/documents/{document_id}/exports/{filename}", status_code=302
+    )
 
 
 @router.get("/{document_id}/exports/{filename}")
