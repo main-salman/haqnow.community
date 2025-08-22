@@ -91,15 +91,4 @@ update the application so that we can do local development. Local development sh
 
 
 
-resize and delete was working in one of thesechore(deploy): sync local changes before server deploy
-main-salman
-main-salman
-committed
-15 minutes ago
-·
-chore(deploy): sync local changes before server deploy
-main-salman
-main-salman
-committed
-20 minutes ago
-·
+git commit - https://github.com/main-salman/haqnow.community/commit/cb402cc83f641a45fa70e2be92670703f102b6db or https://github.com/main-salman/haqnow.community/commit/365dda5decb54066e99570a03f71f7b790d08587

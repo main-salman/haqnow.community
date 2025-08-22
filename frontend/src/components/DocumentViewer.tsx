@@ -1079,7 +1079,7 @@ export default function DocumentViewer({
       }
     }
 
-    const onMouseDownCapture = (ev: MouseEvent) => {
+    const onMouseDownCapture = (ev: MouseEvent | PointerEvent) => {
       const target = ev.target as HTMLElement
       if (!target) return
       const isHandle = target.getAttribute('data-testid') === 'redaction-resize-handle'
@@ -1098,7 +1098,7 @@ export default function DocumentViewer({
       activeOverlayElRef.current = el
       try { el.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.6) inset' } catch {}
 
-      const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(ev.clientX, ev.clientY))
+      const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point((ev as any).clientX, (ev as any).clientY))
       const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
       const orig = {
         x1: Number(el.dataset.x1 || '0'),
@@ -1116,10 +1116,12 @@ export default function DocumentViewer({
     }
 
     root.addEventListener('click', onClickCapture, true)
-    root.addEventListener('mousedown', onMouseDownCapture, true)
+    root.addEventListener('mousedown', onMouseDownCapture as any, true)
+    root.addEventListener('pointerdown', onMouseDownCapture as any, true)
     return () => {
       root.removeEventListener('click', onClickCapture, true)
-      root.removeEventListener('mousedown', onMouseDownCapture, true)
+      root.removeEventListener('mousedown', onMouseDownCapture as any, true)
+      root.removeEventListener('pointerdown', onMouseDownCapture as any, true)
     }
   }, [viewer, onRedactionDelete])
 
