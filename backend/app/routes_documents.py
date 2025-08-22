@@ -742,7 +742,7 @@ async def get_document_tiles(
 ):
     """Serve document tiles configuration for OpenSeadragon viewer"""
     import os
-    
+
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -764,13 +764,15 @@ async def get_document_tiles(
     # Return proper tile source configuration for OpenSeadragon
     return {
         "type": "legacy-image-pyramid",
-        "levels": [{
-            "url": f"/api/documents/{document_id}/tiles/page_{page_number}/tile_",
-            "width": 2550,
-            "height": 3300,
-            "tileSize": 256,
-            "overlap": 1
-        }]
+        "levels": [
+            {
+                "url": f"/api/documents/{document_id}/tiles/page_{page_number}/tile_",
+                "width": 2550,
+                "height": 3300,
+                "tileSize": 256,
+                "overlap": 1,
+            }
+        ],
     }
 
 
