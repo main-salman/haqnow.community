@@ -807,18 +807,36 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
                 page_width = rect.width
                 page_height = rect.height
                 
+                # Get viewer image dimensions to properly scale coordinates
+                # The redaction coordinates are relative to the viewer's image dimensions
+                viewer_width = 2550.0  # Default fallback
+                viewer_height = 3300.0
+                
+                try:
+                    # Try to get actual thumbnail dimensions
+                    import requests
+                    from PIL import Image
+                    import io
+                    
+                    # Get thumbnail from same endpoint the viewer uses
+                    thumbnail_url = f"http://localhost:8000/documents/{document_id}/thumbnail/{page_num}"
+                    resp = requests.get(thumbnail_url, timeout=5)
+                    if resp.status_code == 200:
+                        img = Image.open(io.BytesIO(resp.content))
+                        viewer_width = float(img.width)
+                        viewer_height = float(img.height)
+                        img.close()
+                        print(f"[DOWNLOAD] Got viewer dimensions: {viewer_width} x {viewer_height}")
+                except Exception as e:
+                    print(f"[DOWNLOAD] Could not get viewer dimensions, using defaults: {e}")
+                
                 # Apply redactions as black rectangles
                 for redaction in redactions_by_page[page_num]:
-                    # Convert relative coordinates to PDF coordinates
-                    # Assuming redactions are stored in a 2000x3000 coordinate system
-                    base_width = 2000
-                    base_height = 3000
-                    
-                    # Scale coordinates to actual page size
-                    x1 = (redaction.x_start / base_width) * page_width
-                    y1 = (redaction.y_start / base_height) * page_height
-                    x2 = (redaction.x_end / base_width) * page_width
-                    y2 = (redaction.y_end / base_height) * page_height
+                    # Scale coordinates from viewer image pixels to PDF points
+                    x1 = (redaction.x_start / viewer_width) * page_width
+                    y1 = (redaction.y_start / viewer_height) * page_height
+                    x2 = (redaction.x_end / viewer_width) * page_width
+                    y2 = (redaction.y_end / viewer_height) * page_height
                     
                     # Create redaction rectangle
                     redact_rect = fitz.Rect(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
