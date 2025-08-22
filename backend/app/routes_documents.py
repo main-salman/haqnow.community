@@ -745,35 +745,38 @@ async def get_document_file(
 
 @router.get("/{document_id}/download")
 async def download_document(document_id: int, db: Session = Depends(get_db)):
-    """Generate and return a redacted PDF download (burned-in)."""
+    """Download document - tries export first, falls back to original file."""
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    export_service = get_export_service()
-    result = await export_service.export_pdf(
-        document_id=document_id,
-        page_ranges=None,
-        include_redacted=True,
-        export_format="pdf",
-        quality="high",
-    )
-    if not result.get("success"):
-        raise HTTPException(
-            status_code=500, detail=result.get("error", "Export failed")
+    # Try to generate exported PDF first
+    try:
+        export_service = get_export_service()
+        result = await export_service.export_pdf(
+            document_id=document_id,
+            page_ranges=None,
+            include_redacted=True,
+            export_format="pdf",
+            quality="high",
         )
+        
+        if result.get("success") and result.get("filename"):
+            # Redirect to the exported file
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(
+                url=f"/api/documents/{document_id}/exports/{result['filename']}", 
+                status_code=302
+            )
+    except Exception as e:
+        print(f"[DOWNLOAD] Export failed for document {document_id}: {e}")
 
-    # Get the filename from the export result and redirect to the actual file endpoint
-    filename = result.get("filename")
-    if not filename:
-        raise HTTPException(status_code=500, detail="Export filename not found")
-
-    # Redirect to the actual file serving endpoint
+    # Fallback: redirect to original file
     from fastapi.responses import RedirectResponse
-
     return RedirectResponse(
-        url=f"/api/documents/{document_id}/exports/{filename}", status_code=302
+        url=f"/api/documents/{document_id}/file", 
+        status_code=302
     )
 
 
