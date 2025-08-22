@@ -687,6 +687,40 @@ async def list_document_exports(document_id: int, db: Session = Depends(get_db))
     return result
 
 
+@router.get("/{document_id}/tiles/page_{page_number}/tile_{x}_{y}.webp")
+async def get_document_tile(
+    document_id: int, page_number: int, x: int, y: int, db: Session = Depends(get_db)
+):
+    """Serve individual tile file for OpenSeadragon viewer"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Try to serve from S3 first
+    try:
+        from .s3_client import download_from_s3
+
+        settings = get_settings()
+        tile_key = f"tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+        tile_data = download_from_s3(settings.s3_bucket_tiles, tile_key)
+        return Response(content=tile_data, media_type="image/webp")
+    except Exception:
+        pass
+
+    # Fallback to local files
+    local_path = (
+        f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+    )
+    if os.path.exists(local_path):
+        with open(local_path, "rb") as f:
+            tile_data = f.read()
+        return Response(content=tile_data, media_type="image/webp")
+
+    # If tile not found, return 404
+    raise HTTPException(status_code=404, detail="Tile not found")
+
+
 @router.get("/{document_id}/tiles/page_{page_number}/")
 async def get_document_tiles(
     document_id: int, page_number: int, db: Session = Depends(get_db)
