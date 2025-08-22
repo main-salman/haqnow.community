@@ -740,21 +740,37 @@ async def get_document_tile(
 async def get_document_tiles(
     document_id: int, page_number: int, db: Session = Depends(get_db)
 ):
-    """Serve document tiles for OpenSeadragon viewer"""
+    """Serve document tiles configuration for OpenSeadragon viewer"""
+    import os
+    
     # Verify document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # For now, return a simple tile configuration
-    # In production, this would serve actual tile files
+    # Check if tiles exist for this document/page
+    tile_dir = f"/srv/processed/tiles/{document_id}/page_{page_number}"
+    if not os.path.exists(tile_dir):
+        # Fallback to thumbnail if no tiles exist
+        return {
+            "type": "image",
+            "url": f"/api/documents/{document_id}/thumbnail/{page_number}",
+            "width": 2550,
+            "height": 3300,
+            "tileSize": 256,
+            "overlap": 1,
+        }
+
+    # Return proper tile source configuration for OpenSeadragon
     return {
-        "type": "image",
-        "url": f"/api/documents/{document_id}/thumbnail/{page_number}",
-        "width": 2000,
-        "height": 3000,
-        "tileSize": 256,
-        "overlap": 1,
+        "type": "legacy-image-pyramid",
+        "levels": [{
+            "url": f"/api/documents/{document_id}/tiles/page_{page_number}/tile_",
+            "width": 2550,
+            "height": 3300,
+            "tileSize": 256,
+            "overlap": 1
+        }]
     }
 
 

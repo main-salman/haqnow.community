@@ -13,9 +13,9 @@ from app.db import SessionLocal
 from app.models import Document, ProcessingJob
 from app.tasks import (
     convert_document_to_pdf_task,
-    process_document_tiling,
-    process_document_thumbnails,
     process_document_ocr,
+    process_document_thumbnails,
+    process_document_tiling,
 )
 
 
@@ -30,7 +30,8 @@ def fix_queued_jobs():
             queued_jobs = (
                 db.query(ProcessingJob)
                 .filter(
-                    ProcessingJob.status == "queued", ProcessingJob.celery_task_id.is_(None)
+                    ProcessingJob.status == "queued",
+                    ProcessingJob.celery_task_id.is_(None),
                 )
                 .order_by(ProcessingJob.document_id, ProcessingJob.job_type)
                 .all()
@@ -66,7 +67,9 @@ def fix_queued_jobs():
                             # Non-conversion jobs wait for conversion to complete
                             task_delay = 5 + (i * 2)
 
-                        print(f"  📤 Dispatching {job.job_type} job {job.id} with delay {task_delay}s")
+                        print(
+                            f"  📤 Dispatching {job.job_type} job {job.id} with delay {task_delay}s"
+                        )
 
                         # Dispatch the appropriate task
                         if job.job_type == "conversion":
@@ -75,7 +78,9 @@ def fix_queued_jobs():
                                     args=[doc_id, job.id], countdown=task_delay
                                 )
                             else:
-                                task = convert_document_to_pdf_task.delay(doc_id, job.id)
+                                task = convert_document_to_pdf_task.delay(
+                                    doc_id, job.id
+                                )
                         elif job.job_type == "tiling":
                             task = process_document_tiling.apply_async(
                                 args=[doc_id, job.id], countdown=task_delay
@@ -114,7 +119,9 @@ def fix_queued_jobs():
 
 if __name__ == "__main__":
     print("🔧 Queued Job Fixer")
-    print("This will re-dispatch Celery tasks for jobs that are stuck in 'queued' status")
+    print(
+        "This will re-dispatch Celery tasks for jobs that are stuck in 'queued' status"
+    )
     print("===============================================================\n")
 
     fix_queued_jobs()
