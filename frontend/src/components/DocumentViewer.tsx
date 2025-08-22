@@ -1046,8 +1046,8 @@ export default function DocumentViewer({
           } else {
             // Fallback: treat coordinates as normalized viewport coordinates
             const size = 0.012
-            const x = (c.x_position / 3000) - size / 2
-            const y = (c.y_position / 3000) - size / 2
+            const x = (c.x_position / 2550) - size / 2
+            const y = (c.y_position / 3300) - size / 2
             rect = new OpenSeadragon.Rect(x, y, size, size)
           }
                     try {
