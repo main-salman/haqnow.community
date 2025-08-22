@@ -83,10 +83,10 @@ class TestDocumentUploadAndProcessing:
                 resp = await ac.get(f"/documents/{doc['id']}/jobs")
                 assert resp.status_code == 200
                 jobs = resp.json()
-                assert len(jobs) == 3  # tiling, thumbnails, ocr
+                assert len(jobs) == 4  # conversion, tiling, thumbnails, ocr
 
                 job_types = {job["job_type"] for job in jobs}
-                assert job_types == {"tiling", "thumbnails", "ocr"}
+                assert job_types == {"conversion", "tiling", "thumbnails", "ocr"}
 
     @pytest.mark.asyncio
     async def test_document_metadata_handling(self):
@@ -142,10 +142,10 @@ class TestDocumentUploadAndProcessing:
             assert resp.status_code == 200
             jobs = resp.json()
 
-            # Should have 3 jobs: tiling, thumbnails, ocr
-            assert len(jobs) == 3
+            # Should have 4 jobs: conversion, tiling, thumbnails, ocr
+            assert len(jobs) == 4
             job_types = {job["job_type"] for job in jobs}
-            assert job_types == {"tiling", "thumbnails", "ocr"}
+            assert job_types == {"conversion", "tiling", "thumbnails", "ocr"}
 
             # All jobs should start as queued
             for job in jobs:

@@ -29,6 +29,7 @@ This app must have these common Document Management System features:
 - Document Capture & Import - Easy uploading from computers, scanners, camera.
 - Workflow Automation - Route documents for review, approval, and notifications without manual tracking.
 - Collaboration - Comments, annotations, co-authoring, and secure sharing.
+- All documents uploaded should be converted to PDF for standardization - regardless of what format is uploaded - whether PDF, docx, html, image files, any document format, etc.
 
 Comment and Redaction features:
 Comment features:

@@ -35,6 +35,7 @@ from .schemas import (
     PresignedUploadResponse,
 )
 from .tasks import (
+    convert_document_to_pdf_task,
     process_document_ocr,
     process_document_thumbnails,
     process_document_tiling,
@@ -375,7 +376,7 @@ def _enqueue_processing_jobs_with_delay(
     # In test environment, create job rows once and skip Celery dispatch to avoid sqlite flakiness
     if os.getenv("PYTEST_CURRENT_TEST"):
         batch = []
-        for job_type in ["tiling", "thumbnails", "ocr"]:
+        for job_type in ["conversion", "tiling", "thumbnails", "ocr"]:
             batch.append(
                 ProcessingJob(
                     document_id=document_id,
@@ -388,7 +389,7 @@ def _enqueue_processing_jobs_with_delay(
         db.commit()
         return
 
-    job_types = ["tiling", "thumbnails", "ocr"]
+    job_types = ["conversion", "tiling", "thumbnails", "ocr"]
 
     for i, job_type in enumerate(job_types):
         # Create job record
@@ -404,7 +405,14 @@ def _enqueue_processing_jobs_with_delay(
         # Enqueue Celery task with staggered delay for bulk uploads
         task_delay = delay_seconds + (i * 1)  # Additional 1s delay between job types
 
-        if job_type == "tiling":
+        if job_type == "conversion":
+            if task_delay > 0:
+                task = convert_document_to_pdf_task.apply_async(
+                    args=[document_id, job.id], countdown=task_delay
+                )
+            else:
+                task = convert_document_to_pdf_task.delay(document_id, job.id)
+        elif job_type == "tiling":
             if task_delay > 0:
                 task = process_document_tiling.apply_async(
                     args=[document_id, job.id], countdown=task_delay

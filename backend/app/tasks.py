@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from .celery_app import celery_app
 from .config import get_settings
+from .conversion import convert_document_to_pdf
 from .db import SessionLocal
 from .models import Document, ProcessingJob
 from .processing import (
@@ -16,8 +17,6 @@ from .processing import (
     rasterize_pdf_pages,
 )
 from .s3_client import download_from_s3, upload_to_s3
-
-# from .conversion import convert_document_to_pdf  # TODO: Add when conversion is implemented
 
 
 def get_db_session() -> Session:

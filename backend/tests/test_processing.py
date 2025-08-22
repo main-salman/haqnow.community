@@ -25,10 +25,10 @@ async def test_document_processing_jobs():
         assert resp.status_code == 200
         jobs = resp.json()
 
-        # Should have 3 jobs: tiling, thumbnails, ocr
-        assert len(jobs) == 3
+        # Should have 4 jobs: conversion, tiling, thumbnails, ocr
+        assert len(jobs) == 4
         job_types = {job["job_type"] for job in jobs}
-        assert job_types == {"tiling", "thumbnails", "ocr"}
+        assert job_types == {"conversion", "tiling", "thumbnails", "ocr"}
 
         # Jobs may be queued, running, or completed depending on timing
         for job in jobs:
