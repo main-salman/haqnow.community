@@ -24,6 +24,32 @@ def get_db_session() -> Session:
     return SessionLocal()
 
 
+def _update_document_status_if_complete(document_id: int, db: Session):
+    """Check if all processing jobs are complete and update document status"""
+    jobs = db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).all()
+    
+    if not jobs:
+        return
+    
+    all_completed = all(job.status == 'completed' for job in jobs)
+    has_failed = any(job.status == 'failed' for job in jobs)
+    
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        return
+        
+    if has_failed:
+        if document.status != 'error':
+            document.status = 'error'
+            print(f"Updated document {document_id} status to 'error' due to failed jobs")
+            db.commit()
+    elif all_completed:
+        if document.status != 'ready':
+            document.status = 'ready'
+            print(f"Updated document {document_id} status to 'ready' - all jobs completed")
+            db.commit()
+
+
 def _load_processing_file_bytes(settings, document: Document) -> bytes:
     """Load the appropriate file for processing (always prefer converted PDF if available)."""
     # For ALL non-PDF documents, try to load the converted PDF first
@@ -179,6 +205,9 @@ def process_document_tiling(self, document_id: int, job_id: int):
         job.completed_at = datetime.utcnow()
         db.commit()
 
+        # Check if all jobs are complete and update document status
+        _update_document_status_if_complete(document_id, db)
+
         return {"status": "completed", "document_id": document_id, "pages": total_pages}
 
     except Exception as e:
@@ -285,6 +314,9 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         job.progress = 100
         job.completed_at = datetime.utcnow()
         db.commit()
+
+        # Check if all jobs are complete and update document status
+        _update_document_status_if_complete(document_id, db)
 
         return {"status": "completed", "document_id": document_id, "pages": total_pages}
 
@@ -393,6 +425,9 @@ def process_document_ocr(self, document_id: int, job_id: int):
         job.completed_at = datetime.utcnow()
         db.commit()
 
+        # Check if all jobs are complete and update document status
+        _update_document_status_if_complete(document_id, db)
+
         return {
             "status": "completed",
             "document_id": document_id,
@@ -439,6 +474,10 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
             job.progress = 100
             job.completed_at = datetime.utcnow()
             db.commit()
+            
+            # Check if all jobs are complete and update document status
+            _update_document_status_if_complete(document_id, db)
+            
             return {"status": "skipped", "reason": "Document is already PDF"}
 
         # Load original file
@@ -482,6 +521,9 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
         job.status = "completed"
         job.completed_at = datetime.utcnow()
         db.commit()
+
+        # Check if all jobs are complete and update document status
+        _update_document_status_if_complete(document_id, db)
 
         print(f"✅ Document conversion completed: {original_title} -> {pdf_filename}")
         return {
