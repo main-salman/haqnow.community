@@ -632,7 +632,7 @@ export default function DocumentViewer({
         // Prevent drawing, start drag or resize
         isDrawingRef.current = false
         suppressCanvasInteractionsRef.current = true
-        if (viewer) viewer.setMouseNavEnabled(false)
+        try { if (viewer && (viewer as any).setMouseNavEnabled && (viewer as any).tracker) { (viewer as any).setMouseNavEnabled(false) } } catch {}
         const rect = { x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2 }
         if (isInResizeHotspot(imgPoint.x, imgPoint.y, rect)) {
           resizingRef.current = { id: hit.id, startX: imgPoint.x, startY: imgPoint.y, orig: rect }
