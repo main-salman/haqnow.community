@@ -88,3 +88,18 @@ Reply with answers (even brief bullets are fine), and I’ll implement according
 
 
 update the application so that we can do local development. Local development should use exoscale database and exoscale sos, but, compute will run locally. This way we can improve the testing speed. Make sure start-local.sh is updated so that local dev version can be started using that.
+
+
+
+resize and delete was working in one of thesechore(deploy): sync local changes before server deploy
+main-salman
+main-salman
+committed
+15 minutes ago
+·
+chore(deploy): sync local changes before server deploy
+main-salman
+main-salman
+committed
+20 minutes ago
+·

@@ -9,7 +9,7 @@ from PIL import Image
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import Redaction
+from .models import Document, Redaction
 from .processing import rasterize_pdf_pages
 from .redaction import get_redaction_service
 from .s3_client import get_s3_client, upload_to_s3
@@ -58,12 +58,40 @@ class ExportService:
 
             if original_data is None:
                 # Attempt local path fallbacks (container paths)
+                # Include variants by document title and id_title
+                doc_title = None
+                try:
+                    db = SessionLocal()
+                    doc = db.query(Document).filter(Document.id == document_id).first()
+                    if doc:
+                        doc_title = doc.title
+                except Exception:
+                    doc_title = None
+                finally:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
                 candidates = [
                     f"/app/uploads/{document_id}.pdf",
                     f"/app/uploads/{document_id}",
-                    f"/srv/backend/uploads/{document_id}.pdf",
-                    f"/srv/backend/uploads/{document_id}",
                 ]
+                if doc_title:
+                    candidates.extend(
+                        [
+                            f"/app/uploads/{doc_title}",
+                            f"/app/uploads/{document_id}_{doc_title}",
+                            f"/srv/backend/uploads/{doc_title}",
+                            f"/srv/backend/uploads/{document_id}_{doc_title}",
+                        ]
+                    )
+                candidates.extend(
+                    [
+                        f"/srv/backend/uploads/{document_id}.pdf",
+                        f"/srv/backend/uploads/{document_id}",
+                    ]
+                )
                 for path in candidates:
                     if os.path.exists(path) and os.path.isfile(path):
                         with open(path, "rb") as f:

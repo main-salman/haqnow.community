@@ -161,10 +161,8 @@ export default function DocumentViewerPage() {
 	const handleDownload = async () => {
 		try {
 			console.log('🔍 Starting redacted download for document', documentId)
-			const res = await documentsApi.export(documentId, { format: 'pdf', include_redacted: true, quality: 'high' })
-			const url = res.data?.download_url || `/api/documents/${documentId}/file`
-			// More robust: navigate to the URL to let the browser handle the download
-			window.location.assign(url)
+			// Prefer server-side generated redacted download endpoint
+			window.location.assign(`/api/documents/${documentId}/download`)
 
 			toast.success('Download started')
 		} catch (error) {

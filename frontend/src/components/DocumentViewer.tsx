@@ -577,6 +577,14 @@ export default function DocumentViewer({
         return
       }
     })
+    // Always clear suppression on release
+    osdViewer.addHandler('canvas-release', () => {
+      if (suppressCanvasInteractionsRef.current) {
+        suppressCanvasInteractionsRef.current = false
+        try { if (viewer && (viewer as any).setMouseNavEnabled && (viewer as any).tracker) { (viewer as any).setMouseNavEnabled(true) } } catch {}
+        logEvent('Viewer', 'canvas-release: suppression cleared', {})
+      }
+    })
 
     // Add overlay for annotations and redactions when image opens
     osdViewer.addHandler('open', () => {
