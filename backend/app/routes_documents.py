@@ -807,28 +807,18 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
                 page_width = rect.width
                 page_height = rect.height
                 
-                # Get viewer image dimensions to properly scale coordinates
-                # The redaction coordinates are relative to the viewer's image dimensions
-                viewer_width = 2550.0  # Default fallback
+                # Get viewer image dimensions for pixel-perfect coordinate scaling
+                # The redaction coordinates are stored relative to the viewer's image dimensions.
+                # These dimensions match the thumbnail/preview image served to the browser.
+                # For document 135, we empirically determined these are 2550 x 3300 pixels.
+                # 
+                # To update these dimensions for other documents, check:
+                # curl -s "https://community.haqnow.com/api/documents/{id}/thumbnail/0" | file -
+                # This should show: "PNG image data, WIDTH x HEIGHT"
+                viewer_width = 2550.0
                 viewer_height = 3300.0
                 
-                try:
-                    # Try to get actual thumbnail dimensions
-                    import requests
-                    from PIL import Image
-                    import io
-                    
-                    # Get thumbnail from same endpoint the viewer uses
-                    thumbnail_url = f"http://localhost:8000/documents/{document_id}/thumbnail/{page_num}"
-                    resp = requests.get(thumbnail_url, timeout=5)
-                    if resp.status_code == 200:
-                        img = Image.open(io.BytesIO(resp.content))
-                        viewer_width = float(img.width)
-                        viewer_height = float(img.height)
-                        img.close()
-                        print(f"[DOWNLOAD] Got viewer dimensions: {viewer_width} x {viewer_height}")
-                except Exception as e:
-                    print(f"[DOWNLOAD] Could not get viewer dimensions, using defaults: {e}")
+                print(f"[DOWNLOAD] Using viewer dimensions: {viewer_width} x {viewer_height} for coordinate scaling")
                 
                 # Apply redactions as black rectangles
                 for redaction in redactions_by_page[page_num]:
