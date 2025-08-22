@@ -579,7 +579,7 @@ export default function DocumentViewer({
     })
 
     // Add overlay for annotations and redactions when image opens
-        osdViewer.addHandler('open', () => {
+    osdViewer.addHandler('open', () => {
       window.clearTimeout(fallbackTimer)
       setUseImageFallback(false)
     })
@@ -593,7 +593,80 @@ export default function DocumentViewer({
       }, 50)
     })
 
-        // Add redaction drawing handlers
+    // Utility: hit-test helper for redactions in IMAGE space
+    const hitTestRedaction = (imgX: number, imgY: number) => {
+      const currentPageReds = redactions.filter(r => r.page_number === pageNumber)
+      for (const r of currentPageReds) {
+        const x1 = Math.min(r.x_start, r.x_end)
+        const y1 = Math.min(r.y_start, r.y_end)
+        const x2 = Math.max(r.x_start, r.x_end)
+        const y2 = Math.max(r.y_start, r.y_end)
+        if (imgX >= x1 && imgX <= x2 && imgY >= y1 && imgY <= y2) {
+          return { id: (r as any).id as number | undefined, x1, y1, x2, y2 }
+        }
+      }
+      return null
+    }
+
+    // Hit-test for delete (top-right 20x20px in image space approx)
+    const isInDeleteHotspot = (imgX: number, imgY: number, rect: {x1:number,y1:number,x2:number,y2:number}) => {
+      const hotspotSize = 30 // pixels in image space; rough but works across zooms
+      return imgX >= rect.x2 - hotspotSize && imgX <= rect.x2 && imgY >= rect.y1 && imgY <= rect.y1 + hotspotSize
+    }
+
+    // Hit-test for resize (bottom-right 20x20px)
+    const isInResizeHotspot = (imgX: number, imgY: number, rect: {x1:number,y1:number,x2:number,y2:number}) => {
+      const hotspotSize = 30
+      return imgX >= rect.x2 - hotspotSize && imgX <= rect.x2 && imgY >= rect.y2 - hotspotSize && imgY <= rect.y2
+    }
+
+    // Intercept canvas-press to start drag/resize when pressing on existing redaction
+    osdViewer.addHandler('canvas-press', (event: any) => {
+      if (!redactionMode) return
+      const item = osdViewer.world.getItemAt(0)
+      if (!item) return
+      const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
+      const imgPoint = item.viewportToImageCoordinates(vpPoint)
+      const hit = hitTestRedaction(imgPoint.x, imgPoint.y)
+      if (hit && hit.id) {
+        // Prevent drawing, start drag or resize
+        isDrawingRef.current = false
+        suppressCanvasInteractionsRef.current = true
+        if (viewer) viewer.setMouseNavEnabled(false)
+        const rect = { x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2 }
+        if (isInResizeHotspot(imgPoint.x, imgPoint.y, rect)) {
+          resizingRef.current = { id: hit.id, startX: imgPoint.x, startY: imgPoint.y, orig: rect }
+          pendingUpdateRef.current = null
+          logEvent('Redactions', 'Start resize (hit-test)', { id: hit.id, imgX: imgPoint.x, imgY: imgPoint.y })
+        } else {
+          draggingRef.current = { id: hit.id, startX: imgPoint.x, startY: imgPoint.y, orig: rect }
+          pendingUpdateRef.current = null
+          logEvent('Redactions', 'Start drag (hit-test)', { id: hit.id, imgX: imgPoint.x, imgY: imgPoint.y })
+        }
+        // Do not proceed with drawing
+        return
+      }
+      // else proceed (drawing handled below)
+    })
+
+    // Canvas click for delete hotspot
+    osdViewer.addHandler('canvas-click', (event: any) => {
+      if (!redactionMode) return
+      const item = osdViewer.world.getItemAt(0)
+      if (!item) return
+      const vpPoint = osdViewer.viewport.pointFromPixel(event.position)
+      const imgPoint = item.viewportToImageCoordinates(vpPoint)
+      const hit = hitTestRedaction(imgPoint.x, imgPoint.y)
+      if (hit && hit.id && isInDeleteHotspot(imgPoint.x, imgPoint.y, hit)) {
+        event.originalEvent?.preventDefault?.()
+        event.originalEvent?.stopPropagation?.()
+        suppressCanvasInteractionsRef.current = true
+        logEvent('Redactions', 'Delete clicked (hit-test)', { id: hit.id })
+        if (confirm('Delete this redaction?')) onRedactionDelete?.(hit.id)
+      }
+    })
+
+    // Add redaction drawing handlers
     if (redactionMode) {
       console.log('🔍 OSD: Setting up redaction handlers')
 
