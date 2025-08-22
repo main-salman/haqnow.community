@@ -30,7 +30,7 @@ export default function DocumentViewerPage() {
 	const { isAuthenticated } = useAuthStore()
 	const [currentPage, setCurrentPage] = useState(0)
 	const [showSidebar, setShowSidebar] = useState(true)
-	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'ai' | 'sharing'>('info')
+	const [sidebarTab, setSidebarTab] = useState<'info' | 'comments' | 'redactions' | 'ai' | 'sharing'>('info')
 	const [mode, setMode] = useState<'view' | 'comment' | 'redact'>('view')
 	const [aiQuestion, setAiQuestion] = useState('')
 	const [newComment, setNewComment] = useState('')
@@ -634,6 +634,15 @@ export default function DocumentViewerPage() {
 								Comments
 							</button>
 							<button
+								onClick={() => setSidebarTab('redactions')}
+								className={clsx(
+									'px-3 py-2 text-sm font-medium rounded-lg transition-colors',
+									sidebarTab === 'redactions' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+								)}
+							>
+								Redactions
+							</button>
+							<button
 								onClick={() => setSidebarTab('ai')}
 								className={clsx(
 									'px-3 py-2 text-sm font-medium rounded-lg transition-colors',
@@ -759,6 +768,38 @@ export default function DocumentViewerPage() {
 										</button>
 									</div>
 								</div>
+							</div>
+						)}
+
+						{sidebarTab === 'redactions' && (
+							<div className="space-y-4">
+								<div>
+									<h3 className="text-sm font-semibold text-gray-900 mb-2">Redactions</h3>
+									{(redactions || []).length === 0 ? (
+										<p className="text-sm text-gray-500">No redactions yet.</p>
+									) : (
+										<div className="space-y-2">
+											{(redactions || []).map((r: any) => (
+												<div key={r.id} className="p-3 bg-gray-50 rounded-lg flex items-center justify-between gap-2">
+													<div className="text-xs text-gray-700">
+														<div>Page {r.page_number + 1}</div>
+														<div>({Math.round(Math.min(r.x_start, r.x_end))}, {Math.round(Math.min(r.y_start, r.y_end))}) → ({Math.round(Math.max(r.x_start, r.x_end))}, {Math.round(Math.max(r.y_start, r.y_end))})</div>
+													</div>
+													<div className="flex items-center gap-2">
+														<button
+															onClick={() => handleDeleteRedaction(r.id)}
+															disabled={deletingRedactions.has(r.id)}
+															className={`text-xs ${deletingRedactions.has(r.id) ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:text-red-800'}`}
+														>
+															{deletingRedactions.has(r.id) ? 'Deleting...' : 'Delete'}
+														</button>
+													</div>
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+								<p className="text-xs text-gray-500">Tip: Drag a redaction on the page to move it. Use the corner handle to resize.</p>
 							</div>
 						)}
 
