@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from .config import get_settings
@@ -763,6 +764,33 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
             status_code=500, detail=result.get("error", "Export failed")
         )
     return result
+
+
+@router.get("/{document_id}/exports/{filename}")
+async def get_exported_file(document_id: int, filename: str):
+    """Serve generated export files from SOS or local fallback."""
+    # Try S3 first
+    try:
+        from .s3_client import download_from_s3
+
+        settings = get_settings()
+        key = f"exports/{document_id}/{filename}"
+        data = download_from_s3(settings.s3_bucket_exports, key)
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception:
+        pass
+
+    # Local fallback
+    local_path = f"/app/processed/exports/{document_id}/{filename}"
+    if os.path.exists(local_path):
+        return FileResponse(
+            path=local_path, filename=filename, media_type="application/pdf"
+        )
+    raise HTTPException(status_code=404, detail="Export file not found")
 
 
 @router.post("/{document_id}/comments")

@@ -169,7 +169,11 @@ class ExportService:
 
                     # Paint DB redactions onto the image to guarantee burn-in
                     if include_redacted and page_image is not None:
-                        regions = self._get_redaction_regions(document_id, page_num)
+                        regions = self._get_redaction_regions(
+                            document_id,
+                            page_num,
+                            target_size=(page_image.width, page_image.height),
+                        )
                         if regions:
                             page_image = self._apply_redaction_rectangles_local(
                                 page_image, regions
@@ -211,7 +215,7 @@ class ExportService:
                 download_url = f"/api/documents/{document_id}/exports/{export_filename}"
             except Exception:
                 # Fallback to local filesystem
-                base_dir = f"/srv/processed/exports/{document_id}"
+                base_dir = f"/app/processed/exports/{document_id}"
                 os.makedirs(base_dir, exist_ok=True)
                 local_path = f"{base_dir}/{export_filename}"
                 with open(local_path, "wb") as f:
@@ -271,6 +275,18 @@ class ExportService:
                         filename = f"page_{page_num:03d}.png"
 
                     if page_image:
+                        # Burn DB redactions as a guarantee (even if a pre-redacted image exists)
+                        if include_redacted:
+                            regions = self._get_redaction_regions(
+                                document_id,
+                                page_num,
+                                target_size=(page_image.width, page_image.height),
+                            )
+                            if regions:
+                                page_image = self._apply_redaction_rectangles_local(
+                                    page_image, regions
+                                )
+
                         # Save image
                         img_bytes = self._image_to_bytes(page_image, format="PNG")
 
@@ -359,9 +375,16 @@ class ExportService:
         return output.getvalue()
 
     def _get_redaction_regions(
-        self, document_id: int, page_number: int
+        self,
+        document_id: int,
+        page_number: int,
+        target_size: Optional[Tuple[int, int]] = None,
     ) -> List[Dict[str, int]]:
-        """Load redaction rectangles from DB and normalize to x,y,width,height in pixels."""
+        """Load redaction rectangles from DB and normalize to x,y,width,height in pixels.
+
+        If target_size is provided, scale from a canonical base (default 2000x3000; fallback 2400x3600
+        if stored coordinates indicate that scale) to the target image size.
+        """
         try:
             db = SessionLocal()
             reds = (
@@ -373,11 +396,30 @@ class ExportService:
                 .all()
             )
             regions: List[Dict[str, int]] = []
+
+            # Infer canonical base from stored coordinates to support legacy clients
+            max_x = 0
+            max_y = 0
             for r in reds:
-                x1 = int(min(r.x_start, r.x_end))
-                y1 = int(min(r.y_start, r.y_end))
-                x2 = int(max(r.x_start, r.x_end))
-                y2 = int(max(r.y_start, r.y_end))
+                max_x = max(max_x, int(max(r.x_start, r.x_end)))
+                max_y = max(max_y, int(max(r.y_start, r.y_end)))
+            base_w = 2000
+            base_h = 3000
+            # If values exceed 2000/3000 notably, assume 2400x3600 canonical
+            if max_x > 2200 or max_y > 3300:
+                base_w = 2400
+                base_h = 3600
+            scale_x = 1.0
+            scale_y = 1.0
+            if target_size is not None and base_w > 0 and base_h > 0:
+                scale_x = float(target_size[0]) / float(base_w)
+                scale_y = float(target_size[1]) / float(base_h)
+
+            for r in reds:
+                x1 = int(min(r.x_start, r.x_end) * scale_x)
+                y1 = int(min(r.y_start, r.y_end) * scale_y)
+                x2 = int(max(r.x_start, r.x_end) * scale_x)
+                y2 = int(max(r.y_start, r.y_end) * scale_y)
                 regions.append(
                     {
                         "x": x1,
@@ -437,7 +479,7 @@ class ExportService:
                         )
             except Exception:
                 # Fallback to local listing
-                base_dir = f"/srv/processed/exports/{document_id}"
+                base_dir = f"/app/processed/exports/{document_id}"
                 if os.path.isdir(base_dir):
                     for name in os.listdir(base_dir):
                         path = os.path.join(base_dir, name)
