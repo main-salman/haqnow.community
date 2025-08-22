@@ -485,14 +485,9 @@ export default function DocumentViewer({
       element: viewerRef.current,
       prefixUrl: '/openseadragon-images/',
       tileSources: {
-        type: 'legacy-image-pyramid',
-        levels: [{
-          url: `/api/documents/${documentId}/tiles/page_${pageNumber}/tile_`,
-          width: 2000,
-          height: 3000,
-        }],
-        tileSize: 256,
-        overlap: 1,
+        type: 'image',
+        url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
+        buildPyramid: false,
       },
       showNavigationControl: false,
       showZoomControl: false,
@@ -521,32 +516,36 @@ export default function DocumentViewer({
       defaultZoomLevel: 1.0,
     })
 
+    // Add error handling for tile loading
+    osdViewer.addHandler('open-failed', (event: any) => {
+      console.error('🔴 OSD open failed:', event)
+      setUseImageFallback(true)
+    })
+
+    osdViewer.addHandler('tile-load-failed', (event: any) => {
+      console.error('🔴 OSD tile load failed:', event)
+    })
+
+    osdViewer.addHandler('open', () => {
+      console.log('✅ OSD opened successfully')
+      window.clearTimeout(fallbackTimer)
+      setUseImageFallback(false)
+    })
+
     // If OSD fails to open quickly, fall back to simple <img>
     const fallbackTimer = window.setTimeout(() => {
       try {
         const count = osdViewer.world.getItemCount()
+        console.log(`🔍 OSD fallback check: ${count} items loaded`)
         if (count === 0) {
-          console.log('🔄 OSD tile loading failed, trying simple image fallback...')
-          // Try simple image source as fallback
-          osdViewer.open({
-            type: 'image',
-            url: `/api/documents/${documentId}/thumbnail/${pageNumber}`,
-            buildPyramid: false,
-          })
-          // If that also fails, use image fallback
-          setTimeout(() => {
-            try {
-              const count2 = osdViewer.world.getItemCount()
-              if (count2 === 0) setUseImageFallback(true)
-            } catch {
-              setUseImageFallback(true)
-            }
-          }, 1000)
+          console.log('⚠️ OSD failed to load, using image fallback')
+          setUseImageFallback(true)
         }
-      } catch {
+      } catch (e) {
+        console.error('🔴 OSD fallback check error:', e)
         setUseImageFallback(true)
       }
-    }, 2000)
+    }, 3000)
 
     // Handle single clicks to add comments (when in comment mode)
     osdViewer.addHandler('canvas-click', (event: any) => {
