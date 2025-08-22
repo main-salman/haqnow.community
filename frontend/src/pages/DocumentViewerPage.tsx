@@ -160,17 +160,16 @@ export default function DocumentViewerPage() {
 	// Handlers for functionality
 	const handleDownload = async () => {
 		try {
-			console.log('🔍 Starting download for document', documentId)
-
-			// Create a temporary link to trigger download
-			const downloadUrl = `/api/documents/${documentId}/file`
-			const anchor = window.document.createElement('a')
-			anchor.href = downloadUrl
-			anchor.download = document?.title || `document-${documentId}.pdf`
-			anchor.style.display = 'none'
-			window.document.body.appendChild(anchor)
-			anchor.click()
-			window.document.body.removeChild(anchor)
+			console.log('🔍 Starting redacted download for document', documentId)
+			const res = await documentsApi.export(documentId, { format: 'pdf', include_redacted: true, quality: 'high' })
+			const url = res.data?.download_url || `/api/documents/${documentId}/file`
+			const a = document.createElement('a')
+			a.href = url
+			a.download = document?.title || `document-${documentId}.pdf`
+			a.style.display = 'none'
+			document.body.appendChild(a)
+			a.click()
+			document.body.removeChild(a)
 
 			toast.success('Download started')
 		} catch (error) {

@@ -776,6 +776,10 @@ export default function DocumentViewer({
           const yRaw = Math.min(r.y_start, r.y_end)
           const wRaw = Math.abs(r.x_end - r.x_start)
           const hRaw = Math.abs(r.y_end - r.y_start)
+          ;(el as any).dataset.x1 = String(xRaw)
+          ;(el as any).dataset.y1 = String(yRaw)
+          ;(el as any).dataset.x2 = String(xRaw + wRaw)
+          ;(el as any).dataset.y2 = String(yRaw + hRaw)
           let rect: OpenSeadragon.Rect
           const isPixel = xRaw > 1 || yRaw > 1 || wRaw > 1 || hRaw > 1
           if (isPixel && tiledImage) {
@@ -958,6 +962,74 @@ export default function DocumentViewer({
         })
     }
   }, [viewer, redactions, comments, pageNumber, showRedactions, showAnnotations])
+
+  // Delegated event handlers to ensure interactions are captured reliably
+  useEffect(() => {
+    if (!viewerRef.current || !viewer) return
+    const root = viewerRef.current
+    const tiledImage = viewer.world.getItemAt(0)
+
+    const onClickCapture = (e: Event) => {
+      const target = e.target as HTMLElement
+      if (!target) return
+      if (target.getAttribute('data-testid') === 'redaction-delete') {
+        const parent = target.parentElement as HTMLElement | null
+        const idStr = parent?.getAttribute('data-redaction-id')
+        if (idStr) {
+          e.stopPropagation()
+          e.preventDefault()
+          const id = Number(idStr)
+          logEvent('Redactions', 'Delete clicked (delegated)', { id })
+          if (confirm('Delete this redaction?')) {
+            onRedactionDelete?.(id)
+          }
+        }
+      }
+    }
+
+    const onMouseDownCapture = (ev: MouseEvent) => {
+      const target = ev.target as HTMLElement
+      if (!target) return
+      const isHandle = target.getAttribute('data-testid') === 'redaction-resize-handle'
+      const isOverlay = target.getAttribute('data-testid') === 'redaction-overlay'
+      if (!isHandle && !isOverlay) return
+      const el = isHandle ? (target.parentElement as HTMLElement | null) : target
+      if (!el) return
+      const idStr = el.getAttribute('data-redaction-id')
+      if (!idStr) return
+      const id = Number(idStr)
+      ev.stopPropagation()
+      ev.preventDefault()
+      isDrawingRef.current = false
+      suppressCanvasInteractionsRef.current = true
+      viewer.setMouseNavEnabled(false)
+      activeOverlayElRef.current = el
+      try { el.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.6) inset' } catch {}
+
+      const pt = viewer.viewport.pointFromPixel(new OpenSeadragon.Point(ev.clientX, ev.clientY))
+      const imgPt = tiledImage ? tiledImage.viewportToImageCoordinates(pt) : { x: pt.x * 3000, y: pt.y * 3000 }
+      const orig = {
+        x1: Number(el.dataset.x1 || '0'),
+        y1: Number(el.dataset.y1 || '0'),
+        x2: Number(el.dataset.x2 || '0'),
+        y2: Number(el.dataset.y2 || '0'),
+      }
+      if (isHandle) {
+        resizingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig }
+        logEvent('Redactions', 'Start resize (delegated)', { id, imgX: imgPt.x, imgY: imgPt.y })
+      } else {
+        draggingRef.current = { id, startX: imgPt.x, startY: imgPt.y, orig }
+        logEvent('Redactions', 'Start drag (delegated)', { id, imgX: imgPt.x, imgY: imgPt.y })
+      }
+    }
+
+    root.addEventListener('click', onClickCapture, true)
+    root.addEventListener('mousedown', onMouseDownCapture, true)
+    return () => {
+      root.removeEventListener('click', onClickCapture, true)
+      root.removeEventListener('mousedown', onMouseDownCapture, true)
+    }
+  }, [viewer, onRedactionDelete])
 
   // Debug: Log when overlay effect runs
   useEffect(() => {
