@@ -115,29 +115,52 @@ def _load_original_file_bytes(settings, document: Document) -> bytes:
     1) S3 bucket `settings.s3_bucket_originals` at key `uploads/{document.title}`
     2) Local uploads within project layout used by API/worker: `/srv/backend/uploads/{filename}`
     3) Alternate local paths that may be used in dev: `/srv/uploads/{filename}`, `uploads/{filename}`
-    4) As a last resort, synthesize a simple one-page PDF indicating a placeholder
+    4) Try with different extensions if title has been changed during conversion
+    5) As a last resort, synthesize a simple one-page PDF indicating a placeholder
     """
-    original_key = f"uploads/{document.title}"
+    
+    # Generate possible filenames - both current title and possible original extensions
+    possible_filenames = [document.title]
+    
+    # If document title ends with .pdf but might have been converted, try common office extensions
+    if document.title.lower().endswith('.pdf'):
+        base_name = document.title.rsplit('.', 1)[0]
+        # Try common document extensions
+        for ext in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']:
+            possible_filenames.append(f"{base_name}{ext}")
+    
+    # 1) Try S3 with all possible filenames
+    for filename in possible_filenames:
+        original_key = f"uploads/{filename}"
+        try:
+            file_data = download_from_s3(settings.s3_bucket_originals, original_key)
+            if len(file_data) > 100:  # Ensure we got real content
+                print(f"Found original file in S3: {original_key} ({len(file_data)} bytes)")
+                return file_data
+        except Exception:
+            continue
 
-    # 1) Try S3
-    try:
-        return download_from_s3(settings.s3_bucket_originals, original_key)
-    except Exception:
-        pass
-
-    # 2) and 3) Try local filesystem variants
+    # 2) and 3) Try local filesystem variants with all possible filenames
     import os
 
-    candidate_paths = [
-        f"/app/uploads/{document.title}",  # shared volume path
-        f"/srv/backend/uploads/{document.title}",  # container path when running `cd backend`
-        f"/srv/uploads/{document.title}",  # alternate mount path
-        f"uploads/{document.title}",  # relative path in dev
-    ]
-    for path in candidate_paths:
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                return f.read()
+    for filename in possible_filenames:
+        candidate_paths = [
+            f"/app/uploads/{filename}",  # shared volume path
+            f"/srv/backend/uploads/{filename}",  # container path when running `cd backend`
+            f"/srv/uploads/{filename}",  # alternate mount path
+            f"uploads/{filename}",  # relative path in dev
+        ]
+        for path in candidate_paths:
+            if os.path.exists(path):
+                try:
+                    file_size = os.path.getsize(path)
+                    if file_size > 100:  # Ensure it's not empty
+                        with open(path, "rb") as f:
+                            file_data = f.read()
+                        print(f"Found original file locally: {path} ({len(file_data)} bytes)")
+                        return file_data
+                except Exception:
+                    continue
 
     # 4) Last resort: create a minimal placeholder PDF
     import fitz
