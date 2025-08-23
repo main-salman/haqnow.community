@@ -99,9 +99,25 @@ def _load_processing_file_bytes(settings, document: Document) -> bytes:
             except FileNotFoundError:
                 continue
 
-        # If no converted PDF found, fall back to original loading
+        # If no converted PDF found, try to convert on-the-fly
+        print(f"No converted PDF found for {document.title}, attempting conversion...")
+        try:
+            from .conversion import convert_document_to_pdf
+            original_data = _load_original_file_bytes(settings, document)
+            print(f"Loaded original file: {len(original_data)} bytes")
+            
+            if len(original_data) > 1000:  # Ensure we have real content
+                pdf_data, pdf_filename = convert_document_to_pdf(original_data, document.title)
+                print(f"Converted to PDF: {len(pdf_data)} bytes")
+                return pdf_data
+            else:
+                print("Original file too small, using as-is")
+        except Exception as e:
+            print(f"On-the-fly conversion failed: {e}")
+
+        # If conversion fails, fall back to original loading
         print(
-            f"Warning: No converted PDF found for {document.title}, using original file loading"
+            f"Warning: Conversion failed for {document.title}, using original file loading"
         )
 
     # Use original file loading for PDFs and as fallback
