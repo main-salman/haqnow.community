@@ -26,47 +26,76 @@ def get_db_session() -> Session:
 
 def _update_document_status_if_complete(document_id: int, db: Session):
     """Check if all processing jobs are complete and update document status"""
-    jobs = db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).all()
-    
+    jobs = (
+        db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).all()
+    )
+
     if not jobs:
         return
-    
-    all_completed = all(job.status == 'completed' for job in jobs)
-    has_failed = any(job.status == 'failed' for job in jobs)
-    
+
+    all_completed = all(job.status == "completed" for job in jobs)
+    has_failed = any(job.status == "failed" for job in jobs)
+
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         return
-        
+
     if has_failed:
-        if document.status != 'error':
-            document.status = 'error'
-            print(f"Updated document {document_id} status to 'error' due to failed jobs")
+        if document.status != "error":
+            document.status = "error"
+            print(
+                f"Updated document {document_id} status to 'error' due to failed jobs"
+            )
             db.commit()
     elif all_completed:
-        if document.status != 'ready':
-            document.status = 'ready'
-            print(f"Updated document {document_id} status to 'ready' - all jobs completed")
+        if document.status != "ready":
+            document.status = "ready"
+            print(
+                f"Updated document {document_id} status to 'ready' - all jobs completed"
+            )
             db.commit()
 
 
 def _load_processing_file_bytes(settings, document: Document) -> bytes:
     """Load the appropriate file for processing (always prefer converted PDF if available)."""
-    # For ALL non-PDF documents, try to load the converted PDF first
-    if not document.title.lower().endswith(".pdf"):
-        # Try to find converted PDF
-        converted_filename = f"{document.id}_{document.title.rsplit('.', 1)[0]}.pdf"
-        converted_paths = [
-            f"/srv/uploads/{converted_filename}",
-            f"/app/uploads/{converted_filename}",
-            f"uploads/{converted_filename}",
+
+    # For non-PDF documents, try to load the converted PDF first
+    original_extension = (
+        document.title.split(".")[-1].lower() if "." in document.title else ""
+    )
+    if original_extension not in ["pdf"]:
+        # Generate possible converted PDF names
+        base_name = (
+            document.title.rsplit(".", 1)[0]
+            if "." in document.title
+            else document.title
+        )
+        converted_filenames = [
+            f"{document.id}_{base_name}.pdf",  # Standard pattern
+            f"{base_name}.pdf",  # Simple pattern
         ]
+
+        converted_paths = []
+        for filename in converted_filenames:
+            converted_paths.extend(
+                [
+                    f"/srv/uploads/{filename}",
+                    f"/app/uploads/{filename}",
+                    f"uploads/{filename}",
+                ]
+            )
 
         for path in converted_paths:
             try:
                 with open(path, "rb") as f:
-                    print(f"Using converted PDF: {path}")
-                    return f.read()
+                    file_data = f.read()
+                    if len(file_data) > 1000:  # Ensure it's not a tiny placeholder
+                        print(f"Using converted PDF: {path} ({len(file_data)} bytes)")
+                        return file_data
+                    else:
+                        print(
+                            f"Skipping small converted PDF: {path} ({len(file_data)} bytes)"
+                        )
             except FileNotFoundError:
                 continue
 
@@ -474,10 +503,10 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
             job.progress = 100
             job.completed_at = datetime.utcnow()
             db.commit()
-            
+
             # Check if all jobs are complete and update document status
             _update_document_status_if_complete(document_id, db)
-            
+
             return {"status": "skipped", "reason": "Document is already PDF"}
 
         # Load original file
@@ -513,9 +542,9 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
                 f.write(pdf_data)
             print(f"Stored converted PDF locally: {local_path}")
 
-        # Update document title to reflect PDF conversion
+        # Keep original document title - don't change it as it breaks file loading
         original_title = document.title
-        document.title = pdf_filename
+        # document.title = pdf_filename  # This breaks file loading - commenting out
 
         job.progress = 100
         job.status = "completed"
