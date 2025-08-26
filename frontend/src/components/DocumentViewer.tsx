@@ -486,7 +486,7 @@ export default function DocumentViewer({
       prefixUrl: '/openseadragon-images/',
       tileSources: {
         type: 'image',
-        url: `/api/documents/${documentId}/pages/${pageNumber}`,
+        url: `/documents/${documentId}/pages/${pageNumber}`,
         width: 2550,
         height: 3300,
         buildPyramid: false
