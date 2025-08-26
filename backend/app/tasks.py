@@ -10,8 +10,8 @@ from .db import SessionLocal
 from .models import Document, ProcessingJob
 from .processing import (
     extract_text_from_image,
+    generate_single_page_image,
     generate_thumbnail,
-    generate_tiles,
     get_document_info,
     rasterize_image,
     rasterize_pdf_pages,
@@ -257,31 +257,29 @@ def process_document_tiling(self, document_id: int, job_id: int):
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 50})
 
-        # Generate tiles for each page
+        # Generate single 300 DPI image for each page
         total_pages = len(pages)
         for i, (page_num, page_image) in enumerate(pages):
-            tiles = generate_tiles(page_image, tile_size=256, quality=80)
+            # Generate single high-quality image instead of tiles
+            single_image_data = generate_single_page_image(page_image, dpi=300)
 
-            # Upload tiles to S3 or store locally
-            for x, y, tile_data in tiles:
-                tile_key = f"tiles/{document_id}/page_{page_num}/tile_{x}_{y}.webp"
-                try:
-                    upload_to_s3(
-                        settings.s3_bucket_tiles, tile_key, tile_data, "image/webp"
-                    )
-                except Exception as e:
-                    # Store locally if S3 is not available
-                    import os
+            # Upload single page image to S3 or store locally
+            page_key = f"pages/{document_id}/page_{page_num}.webp"
+            try:
+                upload_to_s3(
+                    settings.s3_bucket_tiles, page_key, single_image_data, "image/webp"
+                )
+            except Exception as e:
+                # Store locally if S3 is not available
+                import os
 
-                    local_dir = get_local_processed_path(
-                        f"tiles/{document_id}/page_{page_num}"
-                    )
-                    os.makedirs(local_dir, exist_ok=True)
-                    local_path = f"{local_dir}/tile_{x}_{y}.webp"
-                    with open(local_path, "wb") as f:
-                        f.write(tile_data)
-                    print(f"Failed to upload tile to SOS: {e}")
-                    print(f"Stored tile locally: {local_path}")
+                local_dir = get_local_processed_path(f"pages/{document_id}")
+                os.makedirs(local_dir, exist_ok=True)
+                local_path = f"{local_dir}/page_{page_num}.webp"
+                with open(local_path, "wb") as f:
+                    f.write(single_image_data)
+                print(f"Failed to upload page image to SOS: {e}")
+                print(f"Stored page image locally: {local_path}")
 
             # Update progress
             progress = 50 + (40 * (i + 1) // total_pages)

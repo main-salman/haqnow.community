@@ -480,11 +480,17 @@ export default function DocumentViewer({
   useEffect(() => {
     if (!viewerRef.current) return
 
-    // Initialize OpenSeadragon viewer
+    // Initialize OpenSeadragon viewer with single 300 DPI image per page
     const osdViewer = OpenSeadragon({
       element: viewerRef.current,
       prefixUrl: '/openseadragon-images/',
-      tileSources: `/api/documents/${documentId}/tiles/page_${pageNumber}.dzi`,
+      tileSources: {
+        type: 'image',
+        url: `/api/documents/${documentId}/pages/${pageNumber}`,
+        width: 2550,
+        height: 3300,
+        buildPyramid: false
+      },
       showNavigationControl: false,
       showZoomControl: false,
       showHomeControl: false,

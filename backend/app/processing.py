@@ -14,6 +14,50 @@ from .s3_client import upload_to_s3
 ## S3 download helper moved to app.s3_client.download_from_s3 to avoid duplication
 
 
+def generate_single_page_image(image_data: bytes, dpi: int = 300) -> bytes:
+    """
+    Generate a single 300 DPI image from page data
+    This follows the requirement: 'each page in the document should be a single 300 DPI image'
+    """
+    image = Image.open(io.BytesIO(image_data))
+
+    # Ensure RGB mode
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    # Calculate target size for 300 DPI
+    # Standard page size at 300 DPI is approximately 2550x3300 pixels (8.5x11 inches)
+    target_width = 2550
+    target_height = 3300
+
+    # Resize image to target DPI while maintaining aspect ratio
+    original_width, original_height = image.size
+    aspect_ratio = original_width / original_height
+
+    if aspect_ratio > (target_width / target_height):
+        # Image is wider - fit to width
+        new_width = target_width
+        new_height = int(target_width / aspect_ratio)
+    else:
+        # Image is taller - fit to height
+        new_height = target_height
+        new_width = int(target_height * aspect_ratio)
+
+    # Resize image
+    image = image.resize((new_width, new_height), Image.LANCZOS)
+
+    # Create white canvas at target size and center the image
+    canvas = Image.new("RGB", (target_width, target_height), "white")
+    x_offset = (target_width - new_width) // 2
+    y_offset = (target_height - new_height) // 2
+    canvas.paste(image, (x_offset, y_offset))
+
+    # Convert to high-quality WebP (better compression than PNG)
+    output = io.BytesIO()
+    canvas.save(output, format="WEBP", quality=95, method=6)
+    return output.getvalue()
+
+
 def rasterize_pdf_pages(pdf_data: bytes, dpi: int = 300) -> List[Tuple[int, bytes]]:
     """Rasterize PDF pages to PNG images at specified DPI"""
     doc = fitz.open(stream=pdf_data, filetype="pdf")
