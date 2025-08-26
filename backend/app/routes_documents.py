@@ -504,24 +504,26 @@ async def get_document_page_image(
             page_data = f.read()
         return Response(content=page_data, media_type="image/webp")
 
-    # Fallback to thumbnail if single page image doesn't exist yet
-    try:
-        return await get_document_thumbnail(document_id, page_number, db)
-    except:
-        pass
+    # DO NOT fallback to thumbnail - thumbnails are low resolution
+    # If the single page image doesn't exist, we need to process it properly
 
-    # Final fallback: Create a placeholder
+    # Final fallback: Create a 300 DPI placeholder that indicates processing is needed
     import io
 
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
 
+    # Create proper 300 DPI placeholder (2550x3300)
     img = Image.new("RGB", (2550, 3300), color="white")
     draw = ImageDraw.Draw(img)
-    draw.text(
-        (100, 100),
-        f"Document: {document.title}\nPage: {page_number + 1}\nProcessing...",
-        fill="black",
-    )
+
+    try:
+        # Try to use a larger font for better visibility
+        font = ImageFont.truetype("/usr/share/fonts/dejavu/DejaVuSans.ttf", 48)
+    except:
+        font = ImageFont.load_default()
+
+    text = f"Document: {document.title}\nPage: {page_number + 1}\nProcessing required - 300 DPI image not available"
+    draw.multiline_text((100, 500), text, fill="red", font=font, spacing=20)
 
     img_bytes = io.BytesIO()
     img.save(img_bytes, format="WEBP", quality=95)
