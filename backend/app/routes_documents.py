@@ -36,6 +36,7 @@ from .schemas import (
 )
 from .tasks import (
     convert_document_to_pdf_task,
+    get_local_processed_path,
     process_document_ocr,
     process_document_thumbnails,
     process_document_tiling,
@@ -486,8 +487,6 @@ def get_document_metadata(document_id: int, db: Session = Depends(get_db)):
     page_count = 1  # Default minimum
 
     # Check local thumbnail directory first
-    from .tasks import get_local_processed_path
-
     thumbnail_dir = get_local_processed_path(f"thumbnails/{document_id}")
     if os.path.exists(thumbnail_dir):
         try:
