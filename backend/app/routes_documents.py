@@ -892,9 +892,26 @@ async def get_document_dzi(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Check if tiles exist for this document/page
-    tile_dir = get_local_processed_path(f"tiles/{document_id}/page_{page_number}")
-    if not os.path.exists(tile_dir):
+    # Check if tiles exist for this document/page (try SOS first, then local)
+    settings = get_settings()
+    tiles_exist = False
+
+    # Try to check if tiles exist in SOS by looking for a tile file
+    try:
+        from .s3_client import download_from_s3
+
+        tile_key = f"tiles/{document_id}/page_{page_number}/tile_0_0.webp"
+        download_from_s3(settings.s3_bucket_tiles, tile_key)
+        tiles_exist = True
+    except Exception:
+        # Fallback to checking local files
+        import os
+
+        tile_dir = get_local_processed_path(f"tiles/{document_id}/page_{page_number}")
+        if os.path.exists(tile_dir):
+            tiles_exist = True
+
+    if not tiles_exist:
         raise HTTPException(status_code=404, detail="Tiles not found")
 
     # Return DZI XML descriptor
