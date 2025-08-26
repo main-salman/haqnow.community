@@ -1228,6 +1228,7 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
             original_keys = [
                 f"uploads/{document.title}",
                 f"{document_id}/{document.title}",
+                f"uploads/{document_id}/original",
             ]
             for key in original_keys:
                 try:
@@ -1245,7 +1246,45 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
                 except Exception:
                     continue
         except Exception as e2:
-            print(f"[DOWNLOAD] Could not get document data: {e2}")
+            print(f"[DOWNLOAD] Could not get document data from S3: {e2}")
+
+        # Final fallback: check local file system (for development/local testing)
+        if not pdf_data:
+            local_paths = [
+                f"/app/uploads/{document_id}_{document.title}",
+                f"/app/uploads/{document.title}",
+                f"/app/uploads/{document_id}_{document.title}",
+                f"/app/uploads/{document.title}",
+                f"/srv/backend/uploads/{document_id}_{document.title}",
+                f"/srv/backend/uploads/{document.title}",
+                f"/srv/uploads/{document_id}_{document.title}",
+                f"/srv/uploads/{document.title}",
+                f"uploads/{document_id}_{document.title}",
+                f"uploads/{document.title}",
+            ]
+
+            for local_path in local_paths:
+                if os.path.exists(local_path):
+                    print(f"[DOWNLOAD] Found local file: {local_path}")
+                    try:
+                        with open(local_path, "rb") as f:
+                            original_data = f.read()
+
+                        # Convert to PDF if not already PDF
+                        if not document.title.lower().endswith(".pdf"):
+                            from .conversion import DocumentConverter
+
+                            pdf_data, _ = DocumentConverter.convert_to_pdf(
+                                original_data, document.title
+                            )
+                        else:
+                            pdf_data = original_data
+                        break
+                    except Exception as local_e:
+                        print(
+                            f"[DOWNLOAD] Failed to read local file {local_path}: {local_e}"
+                        )
+                        continue
 
     if not pdf_data:
         raise HTTPException(
