@@ -55,6 +55,12 @@ export default function DocumentViewerPage() {
 		enabled: !!documentId,
 	})
 
+	const { data: documentMetadata } = useQuery({
+		queryKey: ['document-metadata', documentId],
+		queryFn: () => documentsApi.getMetadata(documentId).then(res => res.data),
+		enabled: !!documentId,
+	})
+
 	const { data: jobs = [] } = useQuery({
 		queryKey: ['document-jobs', documentId],
 		queryFn: () => documentsApi.getJobs(documentId).then(res => res.data),
@@ -582,7 +588,7 @@ export default function DocumentViewerPage() {
 						documentId={documentId}
 						pageNumber={currentPage}
 						onPageChange={setCurrentPage}
-						totalPages={3}
+						totalPages={documentMetadata?.page_count || 1}
 						className="h-[70vh]"
 						redactionMode={mode === 'redact'}
 						commentMode={mode === 'comment'}
@@ -598,7 +604,7 @@ export default function DocumentViewerPage() {
 					{/* Debug info */}
 					{process.env.NODE_ENV === 'development' && (
 						<div className="mt-2 p-2 bg-gray-100 text-xs">
-							Mode: {mode} | Comments: {comments?.length || 0} | Redactions: {redactions?.length || 0}
+							Mode: {mode} | Comments: {comments?.length || 0} | Redactions: {redactions?.length || 0} | Pages: {documentMetadata?.page_count || 'Loading...'}
 						</div>
 					)}
 				</div>

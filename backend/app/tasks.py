@@ -19,6 +19,19 @@ from .processing import (
 from .s3_client import download_from_s3, upload_to_s3
 
 
+def get_local_processed_path(subdir: str) -> str:
+    """Get local path for processed files, works in both dev and production"""
+    import os
+
+    if os.path.exists("/srv"):
+        return f"/srv/processed/{subdir}"
+    else:
+        # Local development
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        local_processed = os.path.join(base_dir, "..", "processed", subdir)
+        return os.path.normpath(local_processed)
+
+
 def get_db_session() -> Session:
     """Get database session for Celery tasks"""
     return SessionLocal()
@@ -103,11 +116,14 @@ def _load_processing_file_bytes(settings, document: Document) -> bytes:
         print(f"No converted PDF found for {document.title}, attempting conversion...")
         try:
             from .conversion import convert_document_to_pdf
+
             original_data = _load_original_file_bytes(settings, document)
             print(f"Loaded original file: {len(original_data)} bytes")
-            
+
             if len(original_data) > 1000:  # Ensure we have real content
-                pdf_data, pdf_filename = convert_document_to_pdf(original_data, document.title)
+                pdf_data, pdf_filename = convert_document_to_pdf(
+                    original_data, document.title
+                )
                 print(f"Converted to PDF: {len(pdf_data)} bytes")
                 return pdf_data
             else:
@@ -134,24 +150,26 @@ def _load_original_file_bytes(settings, document: Document) -> bytes:
     4) Try with different extensions if title has been changed during conversion
     5) As a last resort, synthesize a simple one-page PDF indicating a placeholder
     """
-    
+
     # Generate possible filenames - both current title and possible original extensions
     possible_filenames = [document.title]
-    
+
     # If document title ends with .pdf but might have been converted, try common office extensions
-    if document.title.lower().endswith('.pdf'):
-        base_name = document.title.rsplit('.', 1)[0]
+    if document.title.lower().endswith(".pdf"):
+        base_name = document.title.rsplit(".", 1)[0]
         # Try common document extensions
-        for ext in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt']:
+        for ext in [".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt"]:
             possible_filenames.append(f"{base_name}{ext}")
-    
+
     # 1) Try S3 with all possible filenames
     for filename in possible_filenames:
         original_key = f"uploads/{filename}"
         try:
             file_data = download_from_s3(settings.s3_bucket_originals, original_key)
             if len(file_data) > 100:  # Ensure we got real content
-                print(f"Found original file in S3: {original_key} ({len(file_data)} bytes)")
+                print(
+                    f"Found original file in S3: {original_key} ({len(file_data)} bytes)"
+                )
                 return file_data
         except Exception:
             continue
@@ -173,7 +191,9 @@ def _load_original_file_bytes(settings, document: Document) -> bytes:
                     if file_size > 100:  # Ensure it's not empty
                         with open(path, "rb") as f:
                             file_data = f.read()
-                        print(f"Found original file locally: {path} ({len(file_data)} bytes)")
+                        print(
+                            f"Found original file locally: {path} ({len(file_data)} bytes)"
+                        )
                         return file_data
                 except Exception:
                     continue
@@ -253,7 +273,9 @@ def process_document_tiling(self, document_id: int, job_id: int):
                     # Store locally if S3 is not available
                     import os
 
-                    local_dir = f"/srv/processed/tiles/{document_id}/page_{page_num}"
+                    local_dir = get_local_processed_path(
+                        f"tiles/{document_id}/page_{page_num}"
+                    )
                     os.makedirs(local_dir, exist_ok=True)
                     local_path = f"{local_dir}/tile_{x}_{y}.webp"
                     with open(local_path, "wb") as f:
@@ -351,7 +373,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
                 # Store locally if S3 is not available
                 import os
 
-                local_dir = f"/srv/processed/thumbnails/{document_id}"
+                local_dir = get_local_processed_path(f"thumbnails/{document_id}")
                 os.makedirs(local_dir, exist_ok=True)
                 local_path = f"{local_dir}/page_{page_num}.webp"
                 with open(local_path, "wb") as f:
@@ -363,7 +385,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
             try:
                 import os
 
-                preview_dir = f"/srv/processed/previews/{document_id}"
+                preview_dir = get_local_processed_path(f"previews/{document_id}")
                 os.makedirs(preview_dir, exist_ok=True)
                 preview_path = f"{preview_dir}/page_{page_num}.png"
                 with open(preview_path, "wb") as f:
@@ -567,14 +589,17 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
         try:
             # Try to upload to S3 first
             s3_key = f"documents/{document_id}/{pdf_filename}"
-            upload_to_s3(settings.s3_bucket_name, s3_key, pdf_data, "application/pdf")
+            upload_to_s3(
+                settings.s3_bucket_originals, s3_key, pdf_data, "application/pdf"
+            )
             print(f"Uploaded converted PDF to S3: {s3_key}")
         except Exception as e:
             # Fall back to local storage
             print(f"S3 upload failed, storing locally: {e}")
             import os
 
-            local_dir = f"/srv/uploads"
+            # Use local backend directory for development
+            local_dir = f"uploads"
             os.makedirs(local_dir, exist_ok=True)
             local_path = os.path.join(local_dir, f"{document_id}_{pdf_filename}")
             with open(local_path, "wb") as f:

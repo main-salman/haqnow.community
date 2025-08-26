@@ -475,6 +475,101 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
     return document
 
 
+@router.get("/{document_id}/metadata")
+def get_document_metadata(document_id: int, db: Session = Depends(get_db)):
+    """Get document metadata including page count"""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Determine page count by checking available thumbnails/tiles
+    page_count = 1  # Default minimum
+
+    # Check local thumbnail directory first
+    from .tasks import get_local_processed_path
+
+    thumbnail_dir = get_local_processed_path(f"thumbnails/{document_id}")
+    if os.path.exists(thumbnail_dir):
+        try:
+            # Count thumbnail files (page_0.webp, page_1.webp, etc.)
+            thumbnail_files = [
+                f
+                for f in os.listdir(thumbnail_dir)
+                if f.startswith("page_") and f.endswith(".webp")
+            ]
+            if thumbnail_files:
+                # Extract page numbers and find the max
+                page_numbers = []
+                for f in thumbnail_files:
+                    try:
+                        page_num = int(f.replace("page_", "").replace(".webp", ""))
+                        page_numbers.append(page_num)
+                    except ValueError:
+                        continue
+                if page_numbers:
+                    page_count = max(page_numbers) + 1  # Convert from 0-based to count
+        except Exception as e:
+            print(f"Error checking thumbnails: {e}")
+
+    # If no local thumbnails found, check tiles directory
+    if page_count == 1:
+        tiles_dir = get_local_processed_path(f"tiles/{document_id}")
+        if os.path.exists(tiles_dir):
+            try:
+                # Look for page directories (page_0, page_1, etc.)
+                page_dirs = [
+                    d
+                    for d in os.listdir(tiles_dir)
+                    if d.startswith("page_")
+                    and os.path.isdir(os.path.join(tiles_dir, d))
+                ]
+                if page_dirs:
+                    page_numbers = []
+                    for d in page_dirs:
+                        try:
+                            page_num = int(d.replace("page_", ""))
+                            page_numbers.append(page_num)
+                        except ValueError:
+                            continue
+                    if page_numbers:
+                        page_count = (
+                            max(page_numbers) + 1
+                        )  # Convert from 0-based to count
+            except Exception as e:
+                print(f"Error checking tiles: {e}")
+
+    # If still couldn't determine, try to load and examine the document
+    if page_count == 1:
+        try:
+            from .processing import get_document_info
+            from .tasks import _load_processing_file_bytes
+
+            settings = get_settings()
+            file_data = _load_processing_file_bytes(settings, document)
+            doc_info = get_document_info(file_data, document.title)
+            if doc_info.get("pages", 0) > 0:
+                page_count = doc_info["pages"]
+        except Exception as e:
+            print(f"Error getting document info: {e}")
+
+    return {
+        "id": document.id,
+        "title": document.title,
+        "description": document.description,
+        "source": document.source,
+        "language": document.language,
+        "status": document.status,
+        "uploader_id": document.uploader_id,
+        "published_date": document.published_date,
+        "acquired_date": document.acquired_date,
+        "event_date": document.event_date,
+        "filing_date": document.filing_date,
+        "created_at": document.created_at,
+        "updated_at": document.updated_at,
+        "page_count": page_count,
+    }
+
+
 @router.delete("/{document_id}")
 def delete_document(document_id: int, db: Session = Depends(get_db)):
     """Delete document by ID"""
@@ -727,8 +822,8 @@ async def get_document_tile_dzi(
         pass
 
     # Fallback to local files - our tiles don't use levels, just x_y coordinates
-    local_path = (
-        f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+    local_path = get_local_processed_path(
+        f"tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
     )
 
     if os.path.exists(local_path):
@@ -768,8 +863,8 @@ async def get_document_tile(
         pass
 
     # Fallback to local files
-    local_path = (
-        f"/srv/processed/tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
+    local_path = get_local_processed_path(
+        f"tiles/{document_id}/page_{page_number}/tile_{x}_{y}.webp"
     )
 
     if os.path.exists(local_path):
@@ -799,7 +894,7 @@ async def get_document_dzi(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # Check if tiles exist for this document/page
-    tile_dir = f"/srv/processed/tiles/{document_id}/page_{page_number}"
+    tile_dir = get_local_processed_path(f"tiles/{document_id}/page_{page_number}")
     if not os.path.exists(tile_dir):
         raise HTTPException(status_code=404, detail="Tiles not found")
 
@@ -825,7 +920,7 @@ async def get_document_tiles(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # Check if tiles exist for this document/page
-    tile_dir = f"/srv/processed/tiles/{document_id}/page_{page_number}"
+    tile_dir = get_local_processed_path(f"tiles/{document_id}/page_{page_number}")
     if not os.path.exists(tile_dir):
         # Fallback to thumbnail if no tiles exist
         return {
@@ -881,13 +976,17 @@ async def get_document_thumbnail(
         pass
 
     # Fallback to local files (shared volume)
-    preview_path = f"/srv/processed/previews/{document_id}/page_{page_number}.png"
+    preview_path = get_local_processed_path(
+        f"previews/{document_id}/page_{page_number}.png"
+    )
     if os.path.exists(preview_path):
         with open(preview_path, "rb") as f:
             preview_data = f.read()
         return Response(content=preview_data, media_type="image/png")
 
-    local_path = f"/srv/processed/thumbnails/{document_id}/page_{page_number}.webp"
+    local_path = get_local_processed_path(
+        f"thumbnails/{document_id}/page_{page_number}.webp"
+    )
     if os.path.exists(local_path):
         with open(local_path, "rb") as f:
             thumbnail_data = f.read()

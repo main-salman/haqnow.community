@@ -1,4 +1,5 @@
-
+Local development
+- local development should use the exoscale dbaas and exoscale sos services - not local databases or exoscale sos equivalent
 
 	- Create a platform called community.haqnow.com
 		○ Users should be able to upload hundreds or thousands of documents at once
@@ -16,6 +17,7 @@
 		- users should be able to click at any place in the document and add Comments
 		- users should be able to redact any portion of the document - and when that redacted document is exported, it should be exported as PDF but the text in that PDF should still be searchable, but, without the redacted portions
 		- in the document preview section, the document should appear in full 300 dpi resolution
+		- each page in the document should be a single 300 DPI image (not multiple images per page)
 		- incorporate testing of all features into playwright and make sure to review and fix bugs that show up via playwright
 		- users should be able to define groups would would have list of email addresses and they should also be able to share documents with those groups
 		- users should be able to create documents - it should come with a markdown editor - documents should be able to reference other uploaded documents using links - these created documents should also appear in the dashboard
@@ -92,4 +94,4 @@ update the application so that we can do local development. Local development sh
 
 
 
-git commit - https://github.com/main-salman/haqnow.community/commit/cb402cc83f641a45fa70e2be92670703f102b6db or https://github.com/main-salman/haqnow.community/commit/365dda5decb54066e99570a03f71f7b790d08587
+redaction worked in git commit - https://github.com/main-salman/haqnow.community/commit/cb402cc83f641a45fa70e2be92670703f102b6db or https://github.com/main-salman/haqnow.community/commit/365dda5decb54066e99570a03f71f7b790d08587

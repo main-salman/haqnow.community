@@ -103,6 +103,7 @@ export const documentsApi = {
   createContent: (data: { title: string; markdown: string; references?: number[] }) =>
     axios.post('/api/documents/content', data),
   getJobs: (id: number) => axios.get<ProcessingJob[]>(`/api/documents/${id}/jobs`),
+  getMetadata: (id: number) => axios.get<Document & { page_count: number }>(`/api/documents/${id}/metadata`),
   getPresignedUpload: (filename: string, contentType: string, size: number) =>
     axios.post<PresignedUploadResponse>('/api/documents/presigned-upload', {
       filename,
