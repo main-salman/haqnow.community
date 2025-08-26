@@ -467,6 +467,69 @@ def list_documents(db: Session = Depends(get_db)):
     return documents
 
 
+@router.get("/{document_id}/pages/{page_number}")
+@router.head("/{document_id}/pages/{page_number}")
+async def get_document_page_image(
+    document_id: int, page_number: int, db: Session = Depends(get_db)
+):
+    """Get single 300 DPI page image for OpenSeadragon viewer"""
+    # Verify document exists
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    import os
+
+    from fastapi.responses import Response
+
+    # Try to serve from SOS first
+    try:
+        from .s3_client import download_from_s3
+
+        settings = get_settings()
+
+        # Try single page image from SOS
+        page_key = f"pages/{document_id}/page_{page_number}.webp"
+        page_data = download_from_s3(settings.s3_bucket_tiles, page_key)
+        return Response(content=page_data, media_type="image/webp")
+    except Exception:
+        pass
+
+    # Fallback to local files
+    local_path = get_local_processed_path(
+        f"pages/{document_id}/page_{page_number}.webp"
+    )
+    if os.path.exists(local_path):
+        with open(local_path, "rb") as f:
+            page_data = f.read()
+        return Response(content=page_data, media_type="image/webp")
+
+    # Fallback to thumbnail if single page image doesn't exist yet
+    try:
+        return await get_document_thumbnail(document_id, page_number, db)
+    except:
+        pass
+
+    # Final fallback: Create a placeholder
+    import io
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (2550, 3300), color="white")
+    draw = ImageDraw.Draw(img)
+    draw.text(
+        (100, 100),
+        f"Document: {document.title}\nPage: {page_number + 1}\nProcessing...",
+        fill="black",
+    )
+
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="WEBP", quality=95)
+    img_bytes.seek(0)
+
+    return Response(content=img_bytes.getvalue(), media_type="image/webp")
+
+
 @router.get("/{document_id}", response_model=DocumentOut)
 def get_document(document_id: int, db: Session = Depends(get_db)):
     """Get document by ID"""
@@ -1024,69 +1087,6 @@ async def get_document_thumbnail(
     img_bytes.seek(0)
 
     return Response(content=img_bytes.getvalue(), media_type="image/png")
-
-
-@router.get("/{document_id}/pages/{page_number}")
-@router.head("/{document_id}/pages/{page_number}")
-async def get_document_page_image(
-    document_id: int, page_number: int, db: Session = Depends(get_db)
-):
-    """Get single 300 DPI page image for OpenSeadragon viewer"""
-    # Verify document exists
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    import os
-
-    from fastapi.responses import Response
-
-    # Try to serve from SOS first
-    try:
-        from .s3_client import download_from_s3
-
-        settings = get_settings()
-
-        # Try single page image from SOS
-        page_key = f"pages/{document_id}/page_{page_number}.webp"
-        page_data = download_from_s3(settings.s3_bucket_tiles, page_key)
-        return Response(content=page_data, media_type="image/webp")
-    except Exception:
-        pass
-
-    # Fallback to local files
-    local_path = get_local_processed_path(
-        f"pages/{document_id}/page_{page_number}.webp"
-    )
-    if os.path.exists(local_path):
-        with open(local_path, "rb") as f:
-            page_data = f.read()
-        return Response(content=page_data, media_type="image/webp")
-
-    # Fallback to thumbnail if single page image doesn't exist yet
-    try:
-        return await get_document_thumbnail(document_id, page_number, db)
-    except:
-        pass
-
-    # Final fallback: Create a placeholder
-    import io
-
-    from PIL import Image, ImageDraw
-
-    img = Image.new("RGB", (2550, 3300), color="white")
-    draw = ImageDraw.Draw(img)
-    draw.text(
-        (100, 100),
-        f"Document: {document.title}\nPage: {page_number + 1}\nProcessing...",
-        fill="black",
-    )
-
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="WEBP", quality=95)
-    img_bytes.seek(0)
-
-    return Response(content=img_bytes.getvalue(), media_type="image/webp")
 
 
 @router.get("/{document_id}/file-test")
