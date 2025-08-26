@@ -1190,7 +1190,7 @@ async def get_document_file(
 
 @router.get("/{document_id}/download")
 async def download_document(document_id: int, db: Session = Depends(get_db)):
-    """Download document with redactions burned in."""
+    """Download document as redacted PDF - always returns PDF format regardless of original format."""
     import io
     import os
 
@@ -1206,40 +1206,55 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
     # Check if there are any redactions
     redactions = db.query(Redaction).filter(Redaction.document_id == document_id).all()
 
-    # If no redactions, just redirect to original file
-    if not redactions:
-        from fastapi.responses import RedirectResponse
+    # Always create a PDF - never redirect to original file
+    # This ensures all downloads are standardized PDFs with redactions burned in
 
-        return RedirectResponse(
-            url=f"/api/documents/{document_id}/file", status_code=302
-        )
+    # Get converted PDF file (all documents are converted to PDF for standardization)
+    settings = get_settings()
 
-    # Get original document file
-    original_file_paths = [
-        f"/app/uploads/{document.title}",
-        f"/app/uploads/{document_id}_{document.title}",
-        f"uploads/{document.title}",  # Fallback paths
-        f"uploads/{document_id}_{document.title}",
-    ]
+    # Try to get converted PDF from SOS first
+    pdf_data = None
+    try:
+        from .s3_client import download_from_s3
 
-    original_data = None
-    for path in original_file_paths:
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                original_data = f.read()
-            break
+        # Look for converted PDF in SOS
+        pdf_key = f"converted/{document_id}.pdf"
+        pdf_data = download_from_s3(settings.s3_bucket_originals, pdf_key)
+    except Exception as e:
+        print(f"[DOWNLOAD] No converted PDF in SOS: {e}")
 
-    if not original_data:
-        # No original file found, fallback to regular download
-        from fastapi.responses import RedirectResponse
+        # Fallback: try to get original and convert on-the-fly
+        try:
+            original_keys = [
+                f"uploads/{document.title}",
+                f"{document_id}/{document.title}",
+            ]
+            for key in original_keys:
+                try:
+                    original_data = download_from_s3(settings.s3_bucket_originals, key)
+                    # Convert to PDF if not already PDF
+                    if not document.title.lower().endswith(".pdf"):
+                        from .conversion import DocumentConverter
 
-        return RedirectResponse(
-            url=f"/api/documents/{document_id}/file", status_code=302
+                        pdf_data, _ = DocumentConverter.convert_to_pdf(
+                            original_data, document.title
+                        )
+                    else:
+                        pdf_data = original_data
+                    break
+                except Exception:
+                    continue
+        except Exception as e2:
+            print(f"[DOWNLOAD] Could not get document data: {e2}")
+
+    if not pdf_data:
+        raise HTTPException(
+            status_code=404, detail="Document file not available for download"
         )
 
     try:
         # Create redacted PDF
-        pdf_doc = fitz.open(stream=original_data, filetype="pdf")
+        pdf_doc = fitz.open(stream=pdf_data, filetype="pdf")
 
         # Group redactions by page
         redactions_by_page = {}
@@ -1303,7 +1318,7 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
             content=redacted_pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="redacted_{document.title}"'
+                "Content-Disposition": f'attachment; filename="redacted_{document.title.rsplit(".", 1)[0]}.pdf"'
             },
         )
 
@@ -1311,12 +1326,20 @@ async def download_document(document_id: int, db: Session = Depends(get_db)):
         print(
             f"[DOWNLOAD] Failed to create redacted PDF for document {document_id}: {e}"
         )
-        # Fallback to original file
-        from fastapi.responses import RedirectResponse
-
-        return RedirectResponse(
-            url=f"/api/documents/{document_id}/file", status_code=302
-        )
+        # If redaction fails, return clean PDF without redactions
+        try:
+            return Response(
+                content=pdf_data,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="clean_{document.title.rsplit(".", 1)[0]}.pdf"'
+                },
+            )
+        except Exception as e2:
+            print(f"[DOWNLOAD] Could not return clean PDF: {e2}")
+            raise HTTPException(
+                status_code=500, detail="Could not process document for download"
+            )
 
 
 @router.get("/{document_id}/exports/{filename}")
