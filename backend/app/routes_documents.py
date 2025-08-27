@@ -170,14 +170,17 @@ async def bulk_upload_documents(
     # Enqueue processing jobs for all uploaded documents with intelligent staggering
     total_docs = len(uploaded_docs)
     for i, document in enumerate(uploaded_docs):
-        # Add progressively longer delays to prevent overwhelming the worker
-        # For larger batches, increase delays to prevent resource conflicts
+        # Scale delays based on batch size - remove artificial delays for large batches
         if total_docs <= 3:
             delay_seconds = i * 3  # 3 second delay for small batches
-        elif total_docs <= 6:
-            delay_seconds = i * 5  # 5 second delay for medium batches
+        elif total_docs <= 10:
+            delay_seconds = i * 2  # 2 second delay for medium batches
+        elif total_docs <= 20:
+            delay_seconds = i * 1  # 1 second delay for larger batches
         else:
-            delay_seconds = i * 8  # 8 second delay for large batches
+            # For very large batches (>20), rely on worker pool and queue management
+            # No artificial delays - let Celery handle load balancing
+            delay_seconds = 0
 
         _enqueue_processing_jobs_with_delay(document.id, db, delay_seconds)
 

@@ -21,8 +21,8 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=25 * 60,  # 25 minutes (higher than OCR limit)
     task_soft_time_limit=20 * 60,  # 20 minutes
-    worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=1000,
+    worker_prefetch_multiplier=4,  # Increased for better batching with more workers
+    worker_max_tasks_per_child=500,  # Reduced to prevent memory leaks in large batches
     # Dead letter queue and retry configuration
     task_reject_on_worker_lost=True,
     task_acks_late=True,
