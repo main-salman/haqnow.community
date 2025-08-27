@@ -169,18 +169,46 @@ async def bulk_upload_documents(
 
     # Enqueue processing jobs for all uploaded documents with intelligent staggering
     total_docs = len(uploaded_docs)
-    for i, document in enumerate(uploaded_docs):
-        # Scale delays based on batch size - remove artificial delays for large batches
-        if total_docs <= 3:
-            delay_seconds = i * 3  # 3 second delay for small batches
-        elif total_docs <= 10:
-            delay_seconds = i * 2  # 2 second delay for medium batches
-        elif total_docs <= 20:
-            delay_seconds = i * 1  # 1 second delay for larger batches
+
+    # Check current queue depth to prevent system overload
+    try:
+        from celery import current_app
+
+        inspect = current_app.control.inspect()
+        active_tasks = inspect.active()
+        if active_tasks:
+            total_active = sum(len(tasks) for tasks in active_tasks.values())
+            if total_active > 50:  # If more than 50 tasks active, increase delays
+                print(
+                    f"Warning: {total_active} active tasks detected. Increasing delays for system stability."
+                )
+                delay_multiplier = 2  # Double the delays
+            else:
+                delay_multiplier = 1
         else:
-            # For very large batches (>20), rely on worker pool and queue management
-            # No artificial delays - let Celery handle load balancing
-            delay_seconds = 0
+            delay_multiplier = 1
+    except Exception as e:
+        print(f"Could not check queue status: {e}")
+        delay_multiplier = 1
+
+    for i, document in enumerate(uploaded_docs):
+        # Scale delays based on batch size and current system load
+        if total_docs <= 3:
+            delay_seconds = i * 3 * delay_multiplier  # 3 second delay for small batches
+        elif total_docs <= 10:
+            delay_seconds = (
+                i * 2 * delay_multiplier
+            )  # 2 second delay for medium batches
+        elif total_docs <= 20:
+            delay_seconds = (
+                i * 1 * delay_multiplier
+            )  # 1 second delay for larger batches
+        elif total_docs <= 50:
+            # For large batches, add small delays to prevent overwhelming
+            delay_seconds = i * 2  # 2 seconds per document
+        else:
+            # For very large batches (>50), add significant delays for stability
+            delay_seconds = i * 5  # 5 seconds per document
 
         _enqueue_processing_jobs_with_delay(document.id, db, delay_seconds)
 

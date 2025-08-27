@@ -12,6 +12,14 @@ services:
     volumes:
       - processed_data:/srv/processed
       - uploads_data:/app/uploads
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'  # Limit API to 1.5 CPU cores max
+          memory: 2G   # Limit to 2GB memory
+        reservations:
+          cpus: '1.0'  # Guarantee 1 full CPU core for API responsiveness
+          memory: 512M # Reserve 512MB minimum
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
@@ -36,7 +44,7 @@ services:
       context: ..
       dockerfile: backend/Dockerfile.deploy
     image: haqnow/worker:latest
-    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr,celery", "--concurrency=12"]
+    command: ["nice", "-n", "10", "celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr,celery", "--concurrency=8"]
     env_file:
       - ../.env
     volumes:
@@ -45,9 +53,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G  # Limit to 4GB to prevent OOM on large batches
+          cpus: '2.0'  # Limit to 2 CPU cores max (leave 2+ cores for API/frontend)
+          memory: 4G   # Limit to 4GB to prevent OOM on large batches
         reservations:
-          memory: 1G  # Reserve 1GB minimum
+          cpus: '0.5'  # Reserve at least 0.5 CPU cores
+          memory: 1G   # Reserve 1GB minimum
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
