@@ -424,8 +424,8 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
     bind=True,
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 2, "countdown": 60},
-    time_limit=10 * 60,  # 10 minutes max for OCR (shorter than global limit)
-    soft_time_limit=8 * 60,  # 8 minutes soft limit
+    time_limit=20 * 60,  # 20 minutes max for OCR (increased for complex docs)
+    soft_time_limit=15 * 60,  # 15 minutes soft limit
 )
 def process_document_ocr(self, document_id: int, job_id: int):
     """Perform OCR on a document"""

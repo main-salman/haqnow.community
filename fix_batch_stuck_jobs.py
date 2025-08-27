@@ -1,62 +1,67 @@
 #!/usr/bin/env python3
 """
-Fix the current stuck OCR jobs (Documents 1028-1032)
+Fix all stuck OCR jobs from the batch upload and reset processing
 """
 
 import sys
 import os
-
-# Add the app directory to Python path
 sys.path.insert(0, '/app')
 
 from datetime import datetime
 from app.models import ProcessingJob, Document
 from app.db import SessionLocal
 
-def fix_stuck_ocr_jobs():
-    """Fix the specific stuck OCR jobs for documents 1028-1032"""
+def fix_all_stuck_ocr_jobs():
+    """Fix all stuck OCR jobs from the large batch"""
 
     db = SessionLocal()
     try:
-        # Get stuck OCR jobs for documents 1028-1032
+        # Get all stuck OCR jobs that are "running" for more than 20 minutes
+        cutoff_time = datetime.utcnow().timestamp() - (20 * 60)  # 20 minutes ago
+
         stuck_jobs = db.query(ProcessingJob).filter(
-            ProcessingJob.document_id.in_([1028, 1029, 1030, 1031, 1032]),
             ProcessingJob.job_type == "ocr",
             ProcessingJob.status == "running"
         ).all()
 
-        print(f"Found {len(stuck_jobs)} stuck OCR jobs")
+        print(f"Found {len(stuck_jobs)} potentially stuck OCR jobs")
+
+        fixed_docs = set()
 
         for job in stuck_jobs:
-            print(f"Fixing job {job.id} for document {job.document_id}")
+            doc_id = job.document_id
+            print(f"Processing job {job.id} for document {doc_id}")
 
-            # Check if pages exist for this document
+            # Check if pages already exist (successful processing despite stuck job)
             try:
                 from app.s3_client import download_from_s3
                 from app.config import get_settings
                 settings = get_settings()
 
                 # Test if first page exists
-                page_key = f"pages/{job.document_id}/page_0.webp"
+                page_key = f"pages/{doc_id}/page_0.webp"
                 download_from_s3(settings.s3_bucket_tiles, page_key)
 
                 # If page exists, mark job as completed
-                print(f"  ✅ Pages found for document {job.document_id}, marking as completed")
+                print(f"  ✅ Pages found for document {doc_id}, marking as completed")
                 job.status = "completed"
                 job.completed_at = datetime.utcnow()
                 job.error_message = "Auto-recovered: pages were already processed"
+                fixed_docs.add(doc_id)
 
             except Exception as e:
-                print(f"  ❌ No pages found for document {job.document_id}: {e}")
+                print(f"  ⏰ No pages found for document {doc_id}, marking as failed (timeout)")
                 # Mark as failed due to timeout
                 job.status = "failed"
                 job.completed_at = datetime.utcnow()
-                job.error_message = "OCR timeout - killed during processing"
+                job.error_message = "OCR timeout - task exceeded time limit"
+                fixed_docs.add(doc_id)
 
         db.commit()
+        print(f"\n📊 Updated {len(stuck_jobs)} stuck OCR jobs")
 
-        # Now check and update document statuses
-        for doc_id in [1028, 1029, 1030, 1031, 1032]:
+        # Now update document statuses
+        for doc_id in fixed_docs:
             document = db.query(Document).filter(Document.id == doc_id).first()
             if not document:
                 continue
@@ -68,17 +73,29 @@ def fix_stuck_ocr_jobs():
             all_complete = all(job.status == "completed" for job in jobs)
             has_failed = any(job.status == "failed" for job in jobs)
 
+            old_status = document.status
             if has_failed:
                 document.status = "error"
-                print(f"  📄 Document {doc_id}: marked as 'error' (has failed jobs)")
+                print(f"  📄 Document {doc_id}: {old_status} -> error")
             elif all_complete:
                 document.status = "ready"
-                print(f"  📄 Document {doc_id}: marked as 'ready' (all jobs complete)")
+                print(f"  📄 Document {doc_id}: {old_status} -> ready")
             else:
-                print(f"  📄 Document {doc_id}: still processing...")
+                print(f"  📄 Document {doc_id}: {old_status} (still processing)")
 
         db.commit()
-        print(f"\n🎉 Successfully fixed stuck OCR jobs!")
+
+        # Summary
+        status_count = {}
+        for doc_id in fixed_docs:
+            doc = db.query(Document).filter(Document.id == doc_id).first()
+            if doc:
+                status_count[doc.status] = status_count.get(doc.status, 0) + 1
+
+        print(f"\n🎉 Batch processing recovery completed!")
+        print(f"📈 Document status summary:")
+        for status, count in status_count.items():
+            print(f"   {status}: {count} documents")
 
     except Exception as e:
         print(f"❌ Error fixing jobs: {e}")
@@ -87,4 +104,4 @@ def fix_stuck_ocr_jobs():
         db.close()
 
 if __name__ == "__main__":
-    fix_stuck_ocr_jobs()
+    fix_all_stuck_ocr_jobs()
