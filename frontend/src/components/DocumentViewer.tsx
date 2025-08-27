@@ -62,7 +62,7 @@ function ImageFallbackViewer({
     <div className="relative w-full h-full min-h-[600px] bg-white">
       <img
         ref={imgRef}
-        src={`/api/documents/${documentId}/thumbnail/${pageNumber}`}
+        src={`/api/documents/${documentId}/pages/${pageNumber}`}
         alt={`Document ${documentId} page ${pageNumber + 1}`}
         className="w-full h-auto object-contain"
         onLoad={(e) => {
@@ -334,7 +334,7 @@ function ImageFallbackViewer({
             <button
               onClick={() => {
                 if (commentText.trim() && onAddCommentAt) {
-                  const img = document.querySelector(`img[src*="/api/documents/${documentId}/thumbnail/${pageNumber}"]`) as HTMLImageElement
+                  const img = document.querySelector(`img[src*="/api/documents/${documentId}/pages/${pageNumber}"]`) as HTMLImageElement
                   if (img) {
                     const rect = img.getBoundingClientRect()
                     const imgX = (commentPosition.x / rect.width) * 2400
