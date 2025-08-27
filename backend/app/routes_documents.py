@@ -548,50 +548,56 @@ def get_document_metadata(document_id: int, db: Session = Depends(get_db)):
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Determine page count by checking available thumbnails/tiles
+    # Determine page count by checking available pages in S3 and local storage
     page_count = 1  # Default minimum
 
-    # Check local thumbnail directory first
-    thumbnail_dir = get_local_processed_path(f"thumbnails/{document_id}")
-    if os.path.exists(thumbnail_dir):
-        try:
-            # Count thumbnail files (page_0.webp, page_1.webp, etc.)
-            thumbnail_files = [
-                f
-                for f in os.listdir(thumbnail_dir)
-                if f.startswith("page_") and f.endswith(".webp")
-            ]
-            if thumbnail_files:
-                # Extract page numbers and find the max
-                page_numbers = []
-                for f in thumbnail_files:
-                    try:
-                        page_num = int(f.replace("page_", "").replace(".webp", ""))
-                        page_numbers.append(page_num)
-                    except ValueError:
-                        continue
-                if page_numbers:
-                    page_count = max(page_numbers) + 1  # Convert from 0-based to count
-        except Exception as e:
-            print(f"Error checking thumbnails: {e}")
+    # First try to detect pages by testing the pages endpoint
+    max_page_found = 0
+    try:
+        from .s3_client import download_from_s3, get_s3_client
 
-    # If no local thumbnails found, check tiles directory
-    if page_count == 1:
-        tiles_dir = get_local_processed_path(f"tiles/{document_id}")
-        if os.path.exists(tiles_dir):
+        settings = get_settings()
+
+        # Test up to 20 pages by trying to access them
+        for page_num in range(20):
             try:
-                # Look for page directories (page_0, page_1, etc.)
-                page_dirs = [
-                    d
-                    for d in os.listdir(tiles_dir)
-                    if d.startswith("page_")
-                    and os.path.isdir(os.path.join(tiles_dir, d))
+                # Try SOS first
+                page_key = f"pages/{document_id}/page_{page_num}.webp"
+                download_from_s3(settings.s3_bucket_tiles, page_key)
+                max_page_found = page_num
+            except:
+                # Try local fallback
+                local_path = get_local_processed_path(
+                    f"pages/{document_id}/page_{page_num}.webp"
+                )
+                if os.path.exists(local_path):
+                    max_page_found = page_num
+                else:
+                    # No more pages found
+                    break
+
+        if max_page_found >= 0:
+            page_count = max_page_found + 1  # Convert from 0-based to count
+
+    except Exception as e:
+        print(f"Error checking pages in S3: {e}")
+
+        # Fallback: Check local thumbnail directory
+        thumbnail_dir = get_local_processed_path(f"thumbnails/{document_id}")
+        if os.path.exists(thumbnail_dir):
+            try:
+                # Count thumbnail files (page_0.webp, page_1.webp, etc.)
+                thumbnail_files = [
+                    f
+                    for f in os.listdir(thumbnail_dir)
+                    if f.startswith("page_") and f.endswith(".webp")
                 ]
-                if page_dirs:
+                if thumbnail_files:
+                    # Extract page numbers and find the max
                     page_numbers = []
-                    for d in page_dirs:
+                    for f in thumbnail_files:
                         try:
-                            page_num = int(d.replace("page_", ""))
+                            page_num = int(f.replace("page_", "").replace(".webp", ""))
                             page_numbers.append(page_num)
                         except ValueError:
                             continue
@@ -600,7 +606,34 @@ def get_document_metadata(document_id: int, db: Session = Depends(get_db)):
                             max(page_numbers) + 1
                         )  # Convert from 0-based to count
             except Exception as e:
-                print(f"Error checking tiles: {e}")
+                print(f"Error checking thumbnails: {e}")
+
+        # If no local thumbnails found, check tiles directory
+        if page_count == 1:
+            tiles_dir = get_local_processed_path(f"tiles/{document_id}")
+            if os.path.exists(tiles_dir):
+                try:
+                    # Look for page directories (page_0, page_1, etc.)
+                    page_dirs = [
+                        d
+                        for d in os.listdir(tiles_dir)
+                        if d.startswith("page_")
+                        and os.path.isdir(os.path.join(tiles_dir, d))
+                    ]
+                    if page_dirs:
+                        page_numbers = []
+                        for d in page_dirs:
+                            try:
+                                page_num = int(d.replace("page_", ""))
+                                page_numbers.append(page_num)
+                            except ValueError:
+                                continue
+                        if page_numbers:
+                            page_count = (
+                                max(page_numbers) + 1
+                            )  # Convert from 0-based to count
+                except Exception as e:
+                    print(f"Error checking tiles: {e}")
 
     # If still couldn't determine, try to load and examine the document
     if page_count == 1:
