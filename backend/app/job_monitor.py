@@ -8,7 +8,7 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from .db import get_db_session
+from .db import SessionLocal
 from .models import Document, ProcessingJob
 from .tasks import (
     convert_document_to_pdf_task,
@@ -158,7 +158,7 @@ def recover_stuck_job(job: ProcessingJob, db: Session, retry: bool = True) -> bo
 
 def monitor_and_recover_jobs() -> dict:
     """Main monitoring function to detect and recover stuck jobs"""
-    db = get_db_session()
+    db = SessionLocal()
     results = {
         "stuck_jobs_found": 0,
         "orphaned_jobs_found": 0,
