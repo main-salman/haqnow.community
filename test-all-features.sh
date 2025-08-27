@@ -69,7 +69,7 @@ test_api_endpoint() {
 
     echo "Testing API endpoint: $endpoint"
 
-    response=$(curl -s -w "%{http_code}" -o /tmp/api_response.json "http://localhost:8000$endpoint")
+    response=$(curl -s -w "%{http_code}" -o /tmp/api_response.json "https://community.haqnow.com/api$endpoint")
 
     if [ "$response" = "$expected_status" ]; then
         echo -e "${GREEN}✅ $description${NC}"
@@ -87,7 +87,7 @@ test_frontend_page() {
 
     echo "Testing frontend page: $path"
 
-    response=$(curl -s -w "%{http_code}" -o /dev/null "http://localhost:3000$path")
+    response=$(curl -s -w "%{http_code}" -o /dev/null "https://community.haqnow.com$path")
 
     if [ "$response" = "200" ] || [ "$response" = "302" ] || [ "$response" = "304" ]; then
         echo -e "${GREEN}✅ $description${NC}"
