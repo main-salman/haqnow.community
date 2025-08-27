@@ -420,7 +420,13 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         db.close()
 
 
-@celery_app.task(bind=True)
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 2, "countdown": 60},
+    time_limit=15 * 60,  # 15 minutes max for OCR
+    soft_time_limit=12 * 60,  # 12 minutes soft limit
+)
 def process_document_ocr(self, document_id: int, job_id: int):
     """Perform OCR on a document"""
     db = get_db_session()
@@ -524,12 +530,26 @@ def process_document_ocr(self, document_id: int, job_id: int):
         }
 
     except Exception as e:
-        # Mark as failed
+        # Handle retries and failures more gracefully
         if "job" in locals():
-            job.status = "failed"
-            job.error_message = str(e)
-            job.completed_at = datetime.utcnow()
-            db.commit()
+            # Check if this is a timeout or if we should retry
+            if self.request.retries < self.max_retries:
+                job.status = "pending"
+                job.error_message = (
+                    f"Retry {self.request.retries + 1}/{self.max_retries}: {str(e)}"
+                )
+                db.commit()
+                print(f"OCR task for document {document_id} failed, retrying: {e}")
+                raise self.retry(countdown=60, exc=e)
+            else:
+                # Final failure after all retries
+                job.status = "failed"
+                job.error_message = (
+                    f"Final failure after {self.max_retries} retries: {str(e)}"
+                )
+                job.completed_at = datetime.utcnow()
+                db.commit()
+                print(f"OCR task for document {document_id} failed permanently: {e}")
         raise
     finally:
         db.close()
@@ -634,3 +654,21 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
         raise
     finally:
         db.close()
+
+
+@celery_app.task(name="monitor_stuck_jobs")
+def monitor_stuck_jobs():
+    """Periodic task to monitor and recover stuck processing jobs"""
+    import logging
+
+    from .job_monitor import monitor_and_recover_jobs
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        results = monitor_and_recover_jobs()
+        logger.info(f"Job monitoring completed: {results}")
+        return results
+    except Exception as e:
+        logger.error(f"Job monitoring failed: {e}")
+        return {"error": str(e)}

@@ -167,10 +167,18 @@ async def bulk_upload_documents(
             print(f"Failed to upload {file.filename}: {e}")
             continue
 
-    # Enqueue processing jobs for all uploaded documents with staggered delays
+    # Enqueue processing jobs for all uploaded documents with intelligent staggering
+    total_docs = len(uploaded_docs)
     for i, document in enumerate(uploaded_docs):
-        # Add delay to prevent overwhelming the worker
-        delay_seconds = i * 2  # 2 second delay between each document's processing
+        # Add progressively longer delays to prevent overwhelming the worker
+        # For larger batches, increase delays to prevent resource conflicts
+        if total_docs <= 3:
+            delay_seconds = i * 3  # 3 second delay for small batches
+        elif total_docs <= 6:
+            delay_seconds = i * 5  # 5 second delay for medium batches
+        else:
+            delay_seconds = i * 8  # 8 second delay for large batches
+
         _enqueue_processing_jobs_with_delay(document.id, db, delay_seconds)
 
     return {
@@ -411,12 +419,13 @@ def _enqueue_processing_jobs_with_delay(
             task_delay = delay_seconds
         else:
             # If document needs conversion, other jobs wait longer to ensure conversion completes
+            # Increased delays to prevent resource conflicts during batch processing
             base_delay = (
-                15 if needs_conversion else 2
-            )  # 15 seconds for conversion, 2 for PDFs
+                25 if needs_conversion else 5
+            )  # 25 seconds for conversion, 5 for PDFs
             task_delay = (
-                delay_seconds + base_delay + (i * 2)
-            )  # Additional stagger between job types
+                delay_seconds + base_delay + (i * 5)
+            )  # Increased stagger between job types (5 seconds instead of 2)
 
         try:
             if job_type == "conversion":

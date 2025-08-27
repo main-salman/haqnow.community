@@ -36,7 +36,7 @@ services:
       context: ..
       dockerfile: backend/Dockerfile.deploy
     image: haqnow/worker:latest
-    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]
+    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr"]
     env_file:
       - ../.env
     volumes:
@@ -54,6 +54,23 @@ services:
       redis:
         condition: service_started
       ollama:
+        condition: service_started
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile.deploy
+    image: haqnow/worker:latest
+    command: ["celery", "-A", "app.celery_app", "beat", "--loglevel=info"]
+    env_file:
+      - ../.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      redis:
         condition: service_started
 
   redis:
