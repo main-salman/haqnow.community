@@ -36,7 +36,7 @@ services:
       context: ..
       dockerfile: backend/Dockerfile.deploy
     image: haqnow/worker:latest
-    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr"]
+    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr,celery"]
     env_file:
       - ../.env
     volumes:

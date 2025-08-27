@@ -33,6 +33,7 @@ celery_app.conf.update(
         "app.tasks.process_document_tiling": {"queue": "processing"},
         "app.tasks.process_document_thumbnails": {"queue": "processing"},
         "app.tasks.convert_document_to_pdf_task": {"queue": "processing"},
+        "monitor_stuck_jobs": {"queue": "celery"},  # Use default queue for monitoring
     },
     # Default retry policy
     task_default_retry_delay=60,  # 1 minute

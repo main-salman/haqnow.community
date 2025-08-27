@@ -424,8 +424,8 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
     bind=True,
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 2, "countdown": 60},
-    time_limit=15 * 60,  # 15 minutes max for OCR
-    soft_time_limit=12 * 60,  # 12 minutes soft limit
+    time_limit=10 * 60,  # 10 minutes max for OCR (shorter than global limit)
+    soft_time_limit=8 * 60,  # 8 minutes soft limit
 )
 def process_document_ocr(self, document_id: int, job_id: int):
     """Perform OCR on a document"""
@@ -532,8 +532,20 @@ def process_document_ocr(self, document_id: int, job_id: int):
     except Exception as e:
         # Handle retries and failures more gracefully
         if "job" in locals():
-            # Check if this is a timeout or if we should retry
-            if self.request.retries < self.max_retries:
+            # Check if this is a timeout
+            from billiard.exceptions import TimeLimitExceeded
+            from celery.exceptions import SoftTimeLimitExceeded
+
+            is_timeout = isinstance(e, (TimeLimitExceeded, SoftTimeLimitExceeded))
+
+            # Don't retry timeout errors, mark as failed immediately
+            if is_timeout:
+                job.status = "failed"
+                job.error_message = f"OCR timeout after {8 if isinstance(e, SoftTimeLimitExceeded) else 10} minutes"
+                job.completed_at = datetime.utcnow()
+                db.commit()
+                print(f"OCR task for document {document_id} timed out: {e}")
+            elif self.request.retries < self.max_retries:
                 job.status = "pending"
                 job.error_message = (
                     f"Retry {self.request.retries + 1}/{self.max_retries}: {str(e)}"
