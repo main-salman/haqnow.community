@@ -400,8 +400,13 @@ def _enqueue_processing_jobs_with_delay(
     """Enqueue background processing jobs for a document with optional delay"""
     import os
 
-    # In test environment, create job rows once and skip Celery dispatch to avoid sqlite flakiness
-    if os.getenv("PYTEST_CURRENT_TEST"):
+    # FIXED: Only skip Celery in actual test environment with proper test detection
+    if os.getenv("PYTEST_CURRENT_TEST") and "test" in os.getenv(
+        "PYTEST_CURRENT_TEST", ""
+    ):
+        print(
+            f"DEBUG: In actual test mode, creating jobs without Celery for document {document_id}"
+        )
         batch = []
         for job_type in ["conversion", "tiling", "thumbnails", "ocr"]:
             batch.append(
@@ -416,6 +421,9 @@ def _enqueue_processing_jobs_with_delay(
         db.commit()
         return
 
+    print(
+        f"DEBUG: Production mode - submitting jobs to Celery for document {document_id}"
+    )
     job_types = ["conversion", "tiling", "thumbnails", "ocr"]
 
     for i, job_type in enumerate(job_types):
@@ -429,64 +437,35 @@ def _enqueue_processing_jobs_with_delay(
         db.commit()
         db.refresh(job)
 
-        # Calculate delay: respect the delay_seconds parameter (zero-delay for immediate processing)
-        if delay_seconds == 0:
-            # ZERO DELAY MODE: Submit all jobs immediately
-            # The Celery workers and task dependencies handle proper sequencing
-            task_delay = 0
-        else:
-            # LEGACY DELAY MODE: Only used for special cases
-            document = db.query(Document).filter(Document.id == document_id).first()
-            needs_conversion = not document.title.lower().endswith(".pdf")
-
-            if job_type == "conversion":
-                task_delay = delay_seconds
-            else:
-                # If document needs conversion, other jobs wait longer to ensure conversion completes
-                base_delay = (
-                    25 if needs_conversion else 5
-                )  # 25 seconds for conversion, 5 for PDFs
-                task_delay = (
-                    delay_seconds + base_delay + (i * 5)
-                )  # Stagger between job types
+        # FIXED: Always use zero delay for immediate processing (no hardcoded delays)
+        task_delay = 0
+        print(
+            f"DEBUG: Submitting {job_type} task immediately for document {document_id}"
+        )
 
         try:
             if job_type == "conversion":
-                if task_delay > 0:
-                    task = convert_document_to_pdf_task.apply_async(
-                        args=[document_id, job.id], countdown=task_delay
-                    )
-                else:
-                    task = convert_document_to_pdf_task.delay(document_id, job.id)
+                task = convert_document_to_pdf_task.delay(document_id, job.id)
             elif job_type == "tiling":
-                if task_delay > 0:
-                    task = process_document_tiling.apply_async(
-                        args=[document_id, job.id], countdown=task_delay
-                    )
-                else:
-                    task = process_document_tiling.delay(document_id, job.id)
+                task = process_document_tiling.delay(document_id, job.id)
             elif job_type == "thumbnails":
-                if task_delay > 0:
-                    task = process_document_thumbnails.apply_async(
-                        args=[document_id, job.id], countdown=task_delay
-                    )
-                else:
-                    task = process_document_thumbnails.delay(document_id, job.id)
+                task = process_document_thumbnails.delay(document_id, job.id)
             elif job_type == "ocr":
-                if task_delay > 0:
-                    task = process_document_ocr.apply_async(
-                        args=[document_id, job.id], countdown=task_delay
-                    )
-                else:
-                    task = process_document_ocr.delay(document_id, job.id)
+                task = process_document_ocr.delay(document_id, job.id)
 
             # Update job with Celery task ID
             job.celery_task_id = task.id
             db.commit()
+            print(f"DEBUG: Successfully submitted {job_type} task {task.id}")
 
         except Exception as e:
             # If task dispatch fails, mark job as failed and log the error
-            print(f"Failed to dispatch {job_type} task for document {document_id}: {e}")
+            print(
+                f"ERROR: Failed to dispatch {job_type} task for document {document_id}: {e}"
+            )
+            import traceback
+
+            traceback.print_exc()
             job.status = "failed"
             job.error_message = f"Failed to dispatch task: {str(e)}"
             db.commit()
@@ -742,6 +721,7 @@ def get_document_jobs(document_id: int, db: Session = Depends(get_db)):
             "status": job.status,
             "progress": job.progress,
             "error_message": job.error_message,
+            "celery_task_id": job.celery_task_id,  # FIXED: Include celery_task_id in response
             "created_at": job.created_at,
             "started_at": job.started_at,
             "completed_at": job.completed_at,

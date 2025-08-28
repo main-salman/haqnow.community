@@ -21,7 +21,7 @@ Local development
 		- incorporate testing of all features into playwright and make sure to review and fix bugs that show up via playwright
 		- users should be able to define groups would would have list of email addresses and they should also be able to share documents with those groups
 		- users should be able to create documents - it should come with a markdown editor - documents should be able to reference other uploaded documents using links - these created documents should also appear in the dashboard
-
+		- users should be able to submitt 50 or even 100 documents at once - there should be no hardcoded delays anywhere in the code - the jobs should run sequentially and remain in the queue until done but system shouldn't be idle when there are jobs waiting to be run
 User should be able to redact PDF documents. All documents that are uploaded should turn into standard format, including images. All documents that are uploaded should be OCR. User should be able to redact documents using GUI and export sections of the document in PDF VIA GUI. Users should be able to ask questions about the document using AI (with RAG and Ollama behind the scenes) and also be able to search documents by words and phrases.
 
 This app must have these common Document Management System features:
