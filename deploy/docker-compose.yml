@@ -53,10 +53,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'  # Limit to 2 CPU cores max (leave 2+ cores for API/frontend)
-          memory: 4G   # Limit to 4GB to prevent OOM on large batches
+          cpus: '2.0'  # Limit worker to 2 CPU cores max
+          memory: 4G   # Limit to 4GB memory (increased for OCR stability)
         reservations:
-          cpus: '0.5'  # Reserve at least 0.5 CPU cores
+          cpus: '0.5'  # Guarantee 0.5 CPU cores minimum
           memory: 1G   # Reserve 1GB minimum
     environment:
       - PYTHONUNBUFFERED=1
