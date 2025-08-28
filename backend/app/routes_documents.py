@@ -429,21 +429,26 @@ def _enqueue_processing_jobs_with_delay(
         db.commit()
         db.refresh(job)
 
-        # Calculate delay: conversion starts first, others wait for conversion to complete
-        document = db.query(Document).filter(Document.id == document_id).first()
-        needs_conversion = not document.title.lower().endswith(".pdf")
-
-        if job_type == "conversion":
-            task_delay = delay_seconds
+        # Calculate delay: respect the delay_seconds parameter (zero-delay for immediate processing)
+        if delay_seconds == 0:
+            # ZERO DELAY MODE: Submit all jobs immediately
+            # The Celery workers and task dependencies handle proper sequencing
+            task_delay = 0
         else:
-            # If document needs conversion, other jobs wait longer to ensure conversion completes
-            # Increased delays to prevent resource conflicts during batch processing
-            base_delay = (
-                25 if needs_conversion else 5
-            )  # 25 seconds for conversion, 5 for PDFs
-            task_delay = (
-                delay_seconds + base_delay + (i * 5)
-            )  # Increased stagger between job types (5 seconds instead of 2)
+            # LEGACY DELAY MODE: Only used for special cases
+            document = db.query(Document).filter(Document.id == document_id).first()
+            needs_conversion = not document.title.lower().endswith(".pdf")
+
+            if job_type == "conversion":
+                task_delay = delay_seconds
+            else:
+                # If document needs conversion, other jobs wait longer to ensure conversion completes
+                base_delay = (
+                    25 if needs_conversion else 5
+                )  # 25 seconds for conversion, 5 for PDFs
+                task_delay = (
+                    delay_seconds + base_delay + (i * 5)
+                )  # Stagger between job types
 
         try:
             if job_type == "conversion":
