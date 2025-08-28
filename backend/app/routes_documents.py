@@ -193,22 +193,19 @@ async def bulk_upload_documents(
 
     for i, document in enumerate(uploaded_docs):
         # Scale delays based on batch size and current system load
+        # Use more reasonable delays that don't create excessive wait times
         if total_docs <= 3:
-            delay_seconds = i * 3 * delay_multiplier  # 3 second delay for small batches
+            delay_seconds = i * 2 * delay_multiplier  # 2 second delay for small batches
         elif total_docs <= 10:
             delay_seconds = (
-                i * 2 * delay_multiplier
-            )  # 2 second delay for medium batches
-        elif total_docs <= 20:
-            delay_seconds = (
                 i * 1 * delay_multiplier
-            )  # 1 second delay for larger batches
-        elif total_docs <= 50:
-            # For large batches, add small delays to prevent overwhelming
-            delay_seconds = i * 2  # 2 seconds per document
+            )  # 1 second delay for medium batches
+        elif total_docs <= 30:
+            # For large batches, use minimal delays with cap
+            delay_seconds = min(i * 0.5, 10)  # Max 10 second delay per document
         else:
-            # For very large batches (>50), add significant delays for stability
-            delay_seconds = i * 5  # 5 seconds per document
+            # For very large batches, use very small delays with low cap
+            delay_seconds = min(i * 0.2, 5)  # Max 5 second delay per document
 
         _enqueue_processing_jobs_with_delay(document.id, db, delay_seconds)
 
