@@ -1,0 +1,11 @@
+BATCH TEST DOCUMENT NUMBER 11
+
+This document is part of a 30-document batch upload test.
+
+Document ID: 11
+Format: Plain Text
+Purpose: Testing system stability with large batch uploads
+
+Search keywords: batch11 upload11 test11 stability11
+
+Content verification text for document 11.

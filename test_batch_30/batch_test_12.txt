@@ -1,0 +1,11 @@
+BATCH TEST DOCUMENT NUMBER 12
+
+This document is part of a 30-document batch upload test.
+
+Document ID: 12
+Format: Plain Text
+Purpose: Testing system stability with large batch uploads
+
+Search keywords: batch12 upload12 test12 stability12
+
+Content verification text for document 12.

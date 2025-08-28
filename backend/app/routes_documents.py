@@ -192,18 +192,10 @@ async def bulk_upload_documents(
         delay_multiplier = 1
 
     for i, document in enumerate(uploaded_docs):
-        # MINIMAL delays to prevent overwhelming - prioritize completion over perfection
-        # System stability is maintained by resource limits, not artificial delays
-        if total_docs <= 5:
-            delay_seconds = i * 1 * delay_multiplier  # 1 second delay for small batches
-        elif total_docs <= 15:
-            delay_seconds = min(i * 0.5, 5) * delay_multiplier  # Max 5 second delay
-        else:
-            # For large batches, use very minimal delays
-            delay_seconds = min(i * 0.1, 2)  # Max 2 second delay per document
-
-        # Safety cap: never delay more than 30 seconds for any document
-        delay_seconds = min(delay_seconds, 30)
+        # ZERO DELAY - submit all jobs immediately
+        # System stability is maintained by worker resource limits and queue management
+        # The worker concurrency (8) and resource limits handle load naturally
+        delay_seconds = 0  # Submit immediately - no artificial delays
 
         _enqueue_processing_jobs_with_delay(document.id, db, delay_seconds)
 

@@ -1,0 +1,14 @@
+Test Document 4 - Text Content
+
+This is a comprehensive test document number 4 for testing the document processing system.
+
+Key features being tested:
+- Document upload and processing
+- OCR functionality
+- Search capabilities
+- Comment and redaction features
+- Real-time collaboration
+- Export functionality
+
+Content for testing: document processing batch upload test case number 4
+Keywords: test4, batch4, processing4, system4

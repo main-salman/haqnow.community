@@ -1,0 +1,12 @@
+=== DOCUMENT 25 TEST CONTENT ===
+
+Testing document processing pipeline with document number 25.
+
+Features to verify:
+1. Upload processing
+2. OCR extraction
+3. Search indexing
+4. Comment functionality
+5. Redaction capabilities
+
+Test markers: doc25, test25, verify25
