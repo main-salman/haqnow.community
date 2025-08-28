@@ -299,12 +299,21 @@ def process_document_tiling(self, document_id: int, job_id: int):
         return {"status": "completed", "document_id": document_id, "pages": total_pages}
 
     except Exception as e:
-        # Mark as failed
+        # Mark as failed with better error isolation
         if "job" in locals():
             job.status = "failed"
             job.error_message = str(e)
             job.completed_at = datetime.utcnow()
             db.commit()
+            
+            # Update document status if all jobs are complete (including failed ones)
+            _update_document_status_if_complete(document_id, db)
+        
+        # Don't re-raise for file corruption errors - let other tasks continue
+        if "Failed to open stream" in str(e) or "FileDataError" in str(e):
+            print(f"Skipping corrupted file for document {document_id} - continuing with other tasks")
+            return {"status": "failed", "error": str(e)}
+        
         raise
     finally:
         db.close()
@@ -409,12 +418,21 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         return {"status": "completed", "document_id": document_id, "pages": total_pages}
 
     except Exception as e:
-        # Mark as failed
+        # Mark as failed with better error isolation
         if "job" in locals():
             job.status = "failed"
             job.error_message = str(e)
             job.completed_at = datetime.utcnow()
             db.commit()
+            
+            # Update document status if all jobs are complete (including failed ones)
+            _update_document_status_if_complete(document_id, db)
+        
+        # Don't re-raise for file corruption errors - let other tasks continue
+        if "Failed to open stream" in str(e) or "FileDataError" in str(e):
+            print(f"Skipping corrupted file for document {document_id} - continuing with other tasks")
+            return {"status": "failed", "error": str(e)}
+        
         raise
     finally:
         db.close()
@@ -528,7 +546,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
         }
 
     except Exception as e:
-        # Handle timeout and other errors
+        # Handle timeout and other errors with better isolation
         if "job" in locals():
             from billiard.exceptions import TimeLimitExceeded
             from celery.exceptions import SoftTimeLimitExceeded
@@ -541,13 +559,20 @@ def process_document_ocr(self, document_id: int, job_id: int):
                 job.status = "failed"
                 job.error_message = str(e)
                 print(f"OCR task for document {document_id} failed: {e}")
-                # Log full traceback for debugging
-                import traceback
-
-                traceback.print_exc()
+                # Log error but don't print full traceback to avoid log spam
+                print(f"OCR error details: {type(e).__name__}: {e}")
 
             job.completed_at = datetime.utcnow()
             db.commit()
+            
+            # Update document status if all jobs are complete (including failed ones)
+            _update_document_status_if_complete(document_id, db)
+        
+        # Don't re-raise for file corruption errors - let other tasks continue
+        if "Failed to open stream" in str(e) or "FileDataError" in str(e):
+            print(f"Skipping corrupted file for document {document_id} - continuing with other tasks")
+            return {"status": "failed", "error": str(e)}
+        
         raise
     finally:
         db.close()
