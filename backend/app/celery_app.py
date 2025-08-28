@@ -23,9 +23,9 @@ celery_app.conf.update(
     worker_prefetch_multiplier=2,  # Allow 2 tasks per worker for better throughput
     worker_disable_rate_limits=True,
     worker_max_tasks_per_child=100,  # Restart workers after 100 tasks to prevent memory leaks
-    # Task timeouts to prevent stuck jobs
-    task_time_limit=15 * 60,  # 15 minutes max per task
-    task_soft_time_limit=12 * 60,  # 12 minutes soft limit
+    # Task timeouts to prevent stuck jobs - increased for batch processing
+    task_time_limit=25 * 60,  # 25 minutes max per task
+    task_soft_time_limit=20 * 60,  # 20 minutes soft limit
     # Routing for different task types
     task_routes={
         "app.tasks.process_document_ocr": {"queue": "ocr"},

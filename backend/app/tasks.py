@@ -440,8 +440,8 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
 
 @celery_app.task(
     bind=True,
-    time_limit=12 * 60,  # 12 minutes max for OCR
-    soft_time_limit=10 * 60,  # 10 minutes soft limit
+    time_limit=20 * 60,  # 20 minutes max for OCR
+    soft_time_limit=18 * 60,  # 18 minutes soft limit
 )
 def process_document_ocr(self, document_id: int, job_id: int):
     """Perform OCR on a document"""
