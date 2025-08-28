@@ -44,20 +44,12 @@ services:
       context: ..
       dockerfile: backend/Dockerfile.deploy
     image: haqnow/worker:latest
-    command: ["nice", "-n", "10", "celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr,celery", "--concurrency=8"]
+    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--queues=processing,ocr,celery", "--concurrency=4"]
     env_file:
       - ../.env
     volumes:
       - processed_data:/srv/processed
       - uploads_data:/app/uploads
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'  # Limit worker to 2 CPU cores max
-          memory: 4G   # Limit to 4GB memory (increased for OCR stability)
-        reservations:
-          cpus: '0.5'  # Guarantee 0.5 CPU cores minimum
-          memory: 1G   # Reserve 1GB minimum
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0

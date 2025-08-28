@@ -422,10 +422,8 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
 
 @celery_app.task(
     bind=True,
-    autoretry_for=(Exception,),
-    retry_kwargs={"max_retries": 2, "countdown": 60},
-    time_limit=10 * 60,  # 10 minutes max for OCR (reduced to prevent worker crashes)
-    soft_time_limit=8 * 60,  # 8 minutes soft limit
+    time_limit=12 * 60,  # 12 minutes max for OCR
+    soft_time_limit=10 * 60,  # 10 minutes soft limit
 )
 def process_document_ocr(self, document_id: int, job_id: int):
     """Perform OCR on a document"""
@@ -530,38 +528,26 @@ def process_document_ocr(self, document_id: int, job_id: int):
         }
 
     except Exception as e:
-        # Handle retries and failures more gracefully
+        # Handle timeout and other errors
         if "job" in locals():
-            # Check if this is a timeout
             from billiard.exceptions import TimeLimitExceeded
             from celery.exceptions import SoftTimeLimitExceeded
 
-            is_timeout = isinstance(e, (TimeLimitExceeded, SoftTimeLimitExceeded))
-
-            # Don't retry timeout errors, mark as failed immediately
-            if is_timeout:
+            if isinstance(e, (TimeLimitExceeded, SoftTimeLimitExceeded)):
                 job.status = "failed"
-                job.error_message = f"OCR timeout after {8 if isinstance(e, SoftTimeLimitExceeded) else 10} minutes"
-                job.completed_at = datetime.utcnow()
-                db.commit()
+                job.error_message = f"OCR timeout after {10 if isinstance(e, SoftTimeLimitExceeded) else 12} minutes"
                 print(f"OCR task for document {document_id} timed out: {e}")
-            elif self.request.retries < self.max_retries:
-                job.status = "pending"
-                job.error_message = (
-                    f"Retry {self.request.retries + 1}/{self.max_retries}: {str(e)}"
-                )
-                db.commit()
-                print(f"OCR task for document {document_id} failed, retrying: {e}")
-                raise self.retry(countdown=60, exc=e)
             else:
-                # Final failure after all retries
                 job.status = "failed"
-                job.error_message = (
-                    f"Final failure after {self.max_retries} retries: {str(e)}"
-                )
-                job.completed_at = datetime.utcnow()
-                db.commit()
-                print(f"OCR task for document {document_id} failed permanently: {e}")
+                job.error_message = str(e)
+                print(f"OCR task for document {document_id} failed: {e}")
+                # Log full traceback for debugging
+                import traceback
+
+                traceback.print_exc()
+
+            job.completed_at = datetime.utcnow()
+            db.commit()
         raise
     finally:
         db.close()

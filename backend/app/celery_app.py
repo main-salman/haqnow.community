@@ -11,7 +11,7 @@ celery_app = Celery(
     include=["app.tasks"],
 )
 
-# Configure Celery
+# Configure Celery - Optimized for sequential processing
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
@@ -19,15 +19,13 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=25 * 60,  # 25 minutes (higher than OCR limit)
-    task_soft_time_limit=20 * 60,  # 20 minutes
-    worker_prefetch_multiplier=2,  # Reduced to prevent overwhelming system
-    worker_max_tasks_per_child=200,  # Further reduced for stability
-    worker_pool_restarts=True,  # Enable worker pool restarts on high memory usage
-    # Dead letter queue and retry configuration
-    task_reject_on_worker_lost=True,
-    task_acks_late=True,
+    # Sequential processing configuration
+    worker_prefetch_multiplier=1,  # Process one task at a time per worker
     worker_disable_rate_limits=True,
+    worker_max_tasks_per_child=50,  # Restart workers after 50 tasks to prevent memory leaks
+    # Task timeouts to prevent stuck jobs
+    task_time_limit=15 * 60,  # 15 minutes max per task
+    task_soft_time_limit=12 * 60,  # 12 minutes soft limit
     # Routing for different task types
     task_routes={
         "app.tasks.process_document_ocr": {"queue": "ocr"},
@@ -36,9 +34,6 @@ celery_app.conf.update(
         "app.tasks.convert_document_to_pdf_task": {"queue": "processing"},
         "monitor_stuck_jobs": {"queue": "celery"},  # Use default queue for monitoring
     },
-    # Default retry policy
-    task_default_retry_delay=60,  # 1 minute
-    task_max_retries=3,
     # Periodic tasks
     beat_schedule={
         "monitor-stuck-jobs": {

@@ -674,15 +674,27 @@ export default function DocumentViewerPage() {
 								<div>
 									<h3 className="text-sm font-semibold text-gray-900 mb-2">Processing Status</h3>
 									<div className="space-y-2">
-										{['tiling','thumbnails','ocr'].map((jobType) => (
-											<div key={jobType} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-												<div className="flex items-center space-x-2">
-													{getStatusIcon(getJobStatus(jobType))}
-													<span className="text-sm text-gray-700 capitalize">{jobType}</span>
+										{['tiling','thumbnails','ocr'].map((jobType) => {
+											const job = jobs.find(j => j.job_type === jobType)
+											const status = getJobStatus(jobType)
+											return (
+												<div key={jobType} className="p-2 bg-gray-50 rounded-lg">
+													<div className="flex items-center justify-between">
+														<div className="flex items-center space-x-2">
+															{getStatusIcon(status)}
+															<span className="text-sm text-gray-700 capitalize">{jobType}</span>
+														</div>
+														<span className="text-xs text-gray-500">{getJobProgress(jobType)}%</span>
+													</div>
+													{status === 'failed' && job?.error_message && (
+														<div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+															<p className="text-xs text-red-700 font-medium">Error:</p>
+															<p className="text-xs text-red-600 mt-1">{job.error_message}</p>
+														</div>
+													)}
 												</div>
-												<span className="text-xs text-gray-500">{getJobProgress(jobType)}%</span>
-											</div>
-										))}
+											)
+										})}
 									</div>
 								</div>
 							</div>
