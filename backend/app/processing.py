@@ -170,13 +170,26 @@ def generate_thumbnail(
 
 
 def extract_text_from_image(image_data: bytes, language: str = "eng") -> str:
-    """Extract text from image using Tesseract OCR"""
+    """Extract text from image using optimized Tesseract OCR"""
     try:
         image = Image.open(io.BytesIO(image_data))
+        
+        # Optimize image for OCR - resize to optimal DPI if too large
+        width, height = image.size
+        if width > 2000 or height > 2000:  # If image is too large (300 DPI), resize for OCR
+            # Calculate optimal size for OCR (around 150-200 DPI equivalent)
+            scale_factor = min(1500 / width, 1500 / height)
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-        # Configure Tesseract
-        config = "--oem 3 --psm 6"  # Use LSTM OCR Engine Mode with uniform text block
+        # Convert to grayscale for better OCR performance
+        if image.mode != 'L':
+            image = image.convert('L')
 
+        # Optimized Tesseract configuration for speed and accuracy
+        config = "--oem 3 --psm 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?@#$%^&*()_+-=[]{}|;:'\",.<>?/~` "
+        
         # Extract text
         text = pytesseract.image_to_string(image, lang=language, config=config)
 

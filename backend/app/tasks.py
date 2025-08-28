@@ -475,14 +475,14 @@ def process_document_ocr(self, document_id: int, job_id: int):
         if document.title.lower().endswith(
             (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt")
         ):
-            pages = rasterize_pdf_pages(file_data, dpi=300)
+            pages = rasterize_pdf_pages(file_data, dpi=150)  # Lower DPI for faster OCR
         else:
             # For pure image files that weren't converted, try PDF first (in case they were converted)
             try:
-                pages = rasterize_pdf_pages(file_data, dpi=300)
+                pages = rasterize_pdf_pages(file_data, dpi=150)  # Lower DPI for faster OCR
             except Exception:
                 # Fallback to image processing
-                pages = rasterize_image(file_data, dpi=300)
+                pages = rasterize_image(file_data, dpi=150)  # Lower DPI for faster OCR
 
         job.progress = 40
         db.commit()
