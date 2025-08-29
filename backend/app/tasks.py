@@ -291,7 +291,7 @@ def process_document_tiling(self, document_id: int, job_id: int):
         # Mark as completed
         job.status = "completed"
         job.progress = 100
-        job and setattr(job, "completed_at", datetime.utcnow()
+        job.completed_at = datetime.utcnow()
         db.commit()
 
         # Check if all jobs are complete and update document status
@@ -302,9 +302,10 @@ def process_document_tiling(self, document_id: int, job_id: int):
     except Exception as e:
         # Mark as failed with better error isolation
         if "job" in locals():
-            job and setattr(job, "status", "failed")
-            job and setattr(job, "error_message", str(e)
-            job and setattr(job, "completed_at", datetime.utcnow()
+            if job:
+                job.status = "failed"
+                job.error_message = str(e)
+                job.completed_at = datetime.utcnow()
             db.commit()
             
             # Update document status if all jobs are complete (including failed ones)
@@ -411,7 +412,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         # Mark as completed
         job.status = "completed"
         job.progress = 100
-        job and setattr(job, "completed_at", datetime.utcnow()
+        job.completed_at = datetime.utcnow()
         db.commit()
 
         # Check if all jobs are complete and update document status
@@ -422,9 +423,10 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
     except Exception as e:
         # Mark as failed with better error isolation
         if "job" in locals():
-            job and setattr(job, "status", "failed")
-            job and setattr(job, "error_message", str(e)
-            job and setattr(job, "completed_at", datetime.utcnow()
+            if job:
+                job.status = "failed"
+                job.error_message = str(e)
+                job.completed_at = datetime.utcnow()
             db.commit()
             
             # Update document status if all jobs are complete (including failed ones)
@@ -535,7 +537,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
         # Mark as completed
         job.status = "completed"
         job.progress = 100
-        job and setattr(job, "completed_at", datetime.utcnow()
+        job.completed_at = datetime.utcnow()
         db.commit()
 
         # Check if all jobs are complete and update document status
@@ -555,17 +557,20 @@ def process_document_ocr(self, document_id: int, job_id: int):
             from celery.exceptions import SoftTimeLimitExceeded
 
             if isinstance(e, (TimeLimitExceeded, SoftTimeLimitExceeded)):
-                job and setattr(job, "status", "failed")
-                job and setattr(job, "error_message", f"OCR timeout after {10 if isinstance(e, SoftTimeLimitExceeded) else 12} minutes"
+                if job:
+                    job.status = "failed"
+                    job.error_message = f"OCR timeout after {10 if isinstance(e, SoftTimeLimitExceeded) else 12} minutes"
                 print(f"OCR task for document {document_id} timed out: {e}")
             else:
-                job and setattr(job, "status", "failed")
-                job and setattr(job, "error_message", str(e)
+                if job:
+                    job.status = "failed"
+                    job.error_message = str(e)
                 print(f"OCR task for document {document_id} failed: {e}")
                 # Log error but don't print full traceback to avoid log spam
                 print(f"OCR error details: {type(e).__name__}: {e}")
 
-            job and setattr(job, "completed_at", datetime.utcnow()
+            if job:
+                job.completed_at = datetime.utcnow()
             db.commit()
             
             # Update document status if all jobs are complete (including failed ones)
@@ -607,7 +612,8 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
         if document.title.lower().endswith(".pdf"):
             job.status = "completed"
             job.progress = 100
-            job and setattr(job, "completed_at", datetime.utcnow()
+            if job:
+                job.completed_at = datetime.utcnow()
             db.commit()
 
             # Check if all jobs are complete and update document status
@@ -657,7 +663,8 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
 
         job.progress = 100
         job.status = "completed"
-        job and setattr(job, "completed_at", datetime.utcnow()
+        if job:
+            job.completed_at = datetime.utcnow()
         db.commit()
 
         # Check if all jobs are complete and update document status
@@ -676,7 +683,8 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
         if "job" in locals():
             job and setattr(job, "status", "failed")
             job and setattr(job, "error_message", str(e)
-            job and setattr(job, "completed_at", datetime.utcnow()
+            if job:
+                job.completed_at = datetime.utcnow()
             db.commit()
         raise
     finally:
