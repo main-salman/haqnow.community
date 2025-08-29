@@ -6,7 +6,7 @@ from sqlalchemy import and_, or_, text
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import Document
+from .models import Document, DocumentText
 from .schemas import DocumentOut
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -31,10 +31,16 @@ def search_documents(
     """
     query = db.query(Document)
 
-    # Full-text search on title and description
+    # Full-text search on title, description, and OCR text
     if q:
+        # Left join OCR text table
+        query = query.outerjoin(
+            DocumentText, DocumentText.document_id == Document.id
+        )
         search_filter = or_(
-            Document.title.ilike(f"%{q}%"), Document.description.ilike(f"%{q}%")
+            Document.title.ilike(f"%{q}%"),
+            Document.description.ilike(f"%{q}%"),
+            DocumentText.text.ilike(f"%{q}%"),
         )
         query = query.filter(search_filter)
 

@@ -7,7 +7,7 @@ from .celery_app import celery_app
 from .config import get_settings
 from .conversion import convert_document_to_pdf
 from .db import SessionLocal
-from .models import Document, ProcessingJob
+from .models import Document, ProcessingJob, DocumentText
 from .processing import (
     extract_text_from_image,
     generate_single_page_image,
@@ -520,6 +520,23 @@ def process_document_ocr(self, document_id: int, job_id: int):
             "total_pages": total_pages,
         }
 
+        # Persist combined text to DB for search
+        try:
+            combined_text = "\n".join(p["text"] for p in extracted_text if p.get("text"))
+            existing = (
+                db.query(DocumentText)
+                .filter(DocumentText.document_id == document_id)
+                .first()
+            )
+            if existing:
+                existing.text = combined_text
+                existing.updated_at = datetime.utcnow()
+            else:
+                db.add(DocumentText(document_id=document_id, text=combined_text))
+            db.commit()
+        except Exception as e:
+            print(f"Failed to persist OCR text for document {document_id}: {e}")
+
         # Upload OCR results to S3
         import json
 
@@ -681,9 +698,9 @@ def convert_document_to_pdf_task(self, document_id: int, job_id: int):
     except Exception as e:
         print(f"❌ Document conversion failed: {e}")
         if "job" in locals():
-            job and setattr(job, "status", "failed")
-            job and setattr(job, "error_message", str(e)
             if job:
+                job.status = "failed"
+                job.error_message = str(e)
                 job.completed_at = datetime.utcnow()
             db.commit()
         raise
