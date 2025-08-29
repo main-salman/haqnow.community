@@ -53,7 +53,7 @@ def run_remote_cleanup():
 import sys
 sys.path.insert(0, '/app')
 
-from app.models import Comment, Document, DocumentContent, DocumentShare, ProcessingJob, Redaction
+from app.models import Comment, Document, DocumentContent, DocumentShare, ProcessingJob, Redaction, DocumentText
 from app.db import SessionLocal
 from sqlalchemy import text
 
@@ -102,6 +102,10 @@ def cleanup_all_documents():
         deleted_content = db.query(DocumentContent).delete(synchronize_session=False)
         print(f"   ✅ Deleted {deleted_content} document content entries")
 
+        # Delete OCR text (they reference documents)
+        deleted_doc_text = db.query(DocumentText).delete(synchronize_session=False)
+        print(f"   ✅ Deleted {deleted_doc_text} document OCR text entries")
+
         # Delete processing jobs (they reference documents)
         deleted_jobs = db.query(ProcessingJob).delete(synchronize_session=False)
         print(f"   ✅ Deleted {deleted_jobs} processing jobs")
@@ -127,6 +131,7 @@ def cleanup_all_documents():
             "redactions_id_seq",
             "document_shares_id_seq",
             "document_content_id_seq",
+            "document_texts_id_seq",
             "processing_jobs_id_seq",
         ]
 

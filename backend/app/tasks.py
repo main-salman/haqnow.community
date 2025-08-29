@@ -10,6 +10,7 @@ from .db import SessionLocal
 from .models import Document, ProcessingJob, DocumentText
 from .processing import (
     extract_text_from_image,
+    extract_text_from_pdf,
     generate_single_page_image,
     generate_thumbnail,
     get_document_info,
@@ -475,49 +476,57 @@ def process_document_ocr(self, document_id: int, job_id: int):
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 20})
 
-        # Rasterize pages - all documents should be PDFs after conversion
-        # Only use image rasterization for formats that definitely can't be converted to PDF
-        if document.title.lower().endswith(
-            (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt")
-        ):
-            pages = rasterize_pdf_pages(file_data, dpi=150)  # Lower DPI for faster OCR
-        else:
-            # For pure image files that weren't converted, try PDF first (in case they were converted)
-            try:
-                pages = rasterize_pdf_pages(file_data, dpi=150)  # Lower DPI for faster OCR
-            except Exception:
-                # Fallback to image processing
-                pages = rasterize_image(file_data, dpi=150)  # Lower DPI for faster OCR
-
-        job.progress = 40
-        db.commit()
-        self.update_state(state="PROGRESS", meta={"progress": 40})
-
-        # Extract text from each page
-        total_pages = len(pages)
+        # Prefer fast PDF text layer extraction; fall back to OCR on images
         extracted_text = []
+        used_pdf_layer = False
+        try:
+            pdf_text_pages = extract_text_from_pdf(file_data)
+            # Only accept PDF text layer if it contains any real text
+            if pdf_text_pages and any((t or "").strip() for _, t in pdf_text_pages):
+                for page_num, text in pdf_text_pages:
+                    extracted_text.append({"page": page_num, "text": text})
+                used_pdf_layer = True
+        except Exception as e:
+            print(f"PDF text extraction error: {e}")
 
-        for i, (page_num, page_image) in enumerate(pages):
-            try:
-                text = extract_text_from_image(page_image, language="eng")
-                extracted_text.append({"page": page_num, "text": text})
-            except Exception as e:
-                print(f"OCR failed for page {page_num}: {e}")
-                extracted_text.append(
-                    {"page": page_num, "text": f"[OCR Error: {str(e)}]"}
-                )
+        # If no usable PDF text-layer, or text is too short, perform OCR
+        if (not used_pdf_layer) or (sum(len((p.get("text") or "").strip()) for p in extracted_text) < 100):
+            # Rasterize and OCR
+            if document.title.lower().endswith(
+                (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt")
+            ):
+                pages = rasterize_pdf_pages(file_data, dpi=150)  # Lower DPI for faster OCR
+            else:
+                # For pure image files that weren't converted, try PDF first (in case they were converted)
+                try:
+                    pages = rasterize_pdf_pages(file_data, dpi=150)  # Lower DPI for faster OCR
+                except Exception:
+                    # Fallback to image processing
+                    pages = rasterize_image(file_data, dpi=150)  # Lower DPI for faster OCR
 
-            # Update progress
-            progress = 40 + (50 * (i + 1) // total_pages)
-            job.progress = progress
+            job.progress = 40
             db.commit()
-            self.update_state(state="PROGRESS", meta={"progress": progress})
+            self.update_state(state="PROGRESS", meta={"progress": 40})
+
+            total_pages = len(pages)
+            for i, (page_num, page_image) in enumerate(pages):
+                try:
+                    text = extract_text_from_image(page_image, language="eng")
+                    extracted_text.append({"page": page_num, "text": text})
+                except Exception as e:
+                    print(f"OCR failed for page {page_num}: {e}")
+                    extracted_text.append({"page": page_num, "text": f"[OCR Error: {str(e)}]"})
+
+                progress = 40 + (50 * (i + 1) // total_pages)
+                job.progress = progress
+                db.commit()
+                self.update_state(state="PROGRESS", meta={"progress": progress})
 
         # Store extracted text (in real implementation, would store in search index)
         ocr_result = {
             "document_id": document_id,
             "pages": extracted_text,
-            "total_pages": total_pages,
+            "total_pages": len(extracted_text),
         }
 
         # Persist combined text to DB for search

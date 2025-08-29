@@ -161,6 +161,8 @@ export const documentsApi = {
 // Search API
 export const searchApi = {
   search: (query: string) => axios.get(`/api/search/?q=${encodeURIComponent(query)}`),
+  searchAdvanced: (params: { q: string; source?: string; language?: string; status?: string; limit?: number; offset?: number }) =>
+    axios.get('/api/search/', { params }),
   askQuestion: (documentId: number, question: string) =>
     axios.post('/api/search/ask', { document_id: documentId, question }),
 }

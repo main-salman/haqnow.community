@@ -187,8 +187,8 @@ def extract_text_from_image(image_data: bytes, language: str = "eng") -> str:
         if image.mode != 'L':
             image = image.convert('L')
 
-        # Optimized Tesseract configuration for speed and accuracy
-        config = "--oem 3 --psm 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?@#$%^&*()_+-=[]{}|;:'\",.<>?/~` "
+        # Tesseract configuration (avoid shell-escaped quotes that broke parsing)
+        config = "--oem 3 --psm 3"
         
         # Extract text
         text = pytesseract.image_to_string(image, lang=language, config=config)
@@ -197,6 +197,27 @@ def extract_text_from_image(image_data: bytes, language: str = "eng") -> str:
     except Exception as e:
         print(f"OCR failed: {e}")
         return ""
+
+
+def extract_text_from_pdf(pdf_data: bytes) -> List[Tuple[int, str]]:
+    """Extract text directly from a PDF using PyMuPDF.
+
+    Returns a list of tuples of (page_number, text).
+    """
+    try:
+        doc = fitz.open(stream=pdf_data, filetype="pdf")
+        results: List[Tuple[int, str]] = []
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            # Use default text extraction (layout-aware)
+            text = page.get_text("text") or ""
+            results.append((page_num, text.strip()))
+        doc.close()
+        return results
+    except Exception as e:
+        # If PDF parsing fails, return empty to allow OCR fallback
+        print(f"PDF text extraction failed: {e}")
+        return []
 
 
 def apply_redactions_to_image(
