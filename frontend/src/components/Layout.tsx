@@ -22,7 +22,8 @@ export default function Layout({ children }: LayoutProps) {
 	const navigation = [
 		{ name: 'Dashboard', href: '/dashboard', icon: Home },
 		{ name: 'Documents', href: '/documents', icon: FileText },
-		{ name: 'Search', href: '/search', icon: Search },
+		// Route "Search" to Documents page search until a dedicated page exists
+		{ name: 'Search', href: '/documents', icon: Search },
 	]
 
 	if (user?.role === 'admin') {

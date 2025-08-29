@@ -25,6 +25,7 @@ function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/search" element={<Navigate to="/documents" replace />} />
         <Route path="/documents/:id" element={<DocumentViewerPage />} />
         {user?.role === 'admin' && (
           <Route path="/admin" element={<AdminPage />} />
