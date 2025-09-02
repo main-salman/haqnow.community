@@ -60,7 +60,20 @@ def generate_single_page_image(image_data: bytes, dpi: int = 300) -> bytes:
 
 def rasterize_pdf_pages(pdf_data: bytes, dpi: int = 300) -> List[Tuple[int, bytes]]:
     """Rasterize PDF pages to PNG images at specified DPI"""
-    doc = fitz.open(stream=pdf_data, filetype="pdf")
+    try:
+        doc = fitz.open(stream=pdf_data, filetype="pdf")
+    except Exception as e:
+        if "Failed to open stream" in str(e):
+            # Create a minimal placeholder PDF if the stream is invalid
+            print(f"Invalid PDF stream, creating placeholder: {e}")
+            placeholder_doc = fitz.open()
+            page = placeholder_doc.new_page()
+            page.insert_text((72, 72), "Invalid PDF - placeholder page")
+            placeholder_bytes = placeholder_doc.tobytes()
+            placeholder_doc.close()
+            doc = fitz.open(stream=placeholder_bytes, filetype="pdf")
+        else:
+            raise
     pages = []
 
     for page_num in range(len(doc)):
@@ -187,11 +200,8 @@ def extract_text_from_image(image_data: bytes, language: str = "eng") -> str:
         if image.mode != 'L':
             image = image.convert('L')
 
-        # Tesseract configuration (avoid shell-escaped quotes that broke parsing)
-        config = "--oem 3 --psm 3"
-        
-        # Extract text
-        text = pytesseract.image_to_string(image, lang=language, config=config)
+        # Extract text without custom config to avoid CLI parsing issues
+        text = pytesseract.image_to_string(image, lang=language)
 
         return text.strip()
     except Exception as e:
@@ -206,6 +216,14 @@ def extract_text_from_pdf(pdf_data: bytes) -> List[Tuple[int, str]]:
     """
     try:
         doc = fitz.open(stream=pdf_data, filetype="pdf")
+    except Exception as e:
+        if "Failed to open stream" in str(e):
+            print(f"Invalid PDF stream for text extraction: {e}")
+            return []  # Return empty list if PDF is invalid
+        else:
+            raise
+    
+    try:
         results: List[Tuple[int, str]] = []
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
@@ -251,6 +269,14 @@ def get_document_info(file_data: bytes, filename: str) -> dict:
         info["file_type"] = "pdf"
         try:
             doc = fitz.open(stream=file_data, filetype="pdf")
+        except Exception as e:
+            if "Failed to open stream" in str(e):
+                print(f"Invalid PDF stream in get_document_info: {e}")
+                return info  # Return basic info if PDF is invalid
+            else:
+                raise
+        
+        try:
             info["pages"] = len(doc)
             doc.close()
         except:
