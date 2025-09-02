@@ -502,6 +502,12 @@ export default function DocumentViewerPage() {
 		return job?.progress || 0
 	}
 
+	const getLatestJob = (jobType: string) => {
+		return jobs
+			.filter((j: any) => j.job_type === jobType)
+			.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+	}
+
 	const getStatusIcon = (status: string) => {
 		switch (status) {
 			case 'completed':
@@ -675,7 +681,7 @@ export default function DocumentViewerPage() {
 									<h3 className="text-sm font-semibold text-gray-900 mb-2">Processing Status</h3>
 									<div className="space-y-2">
 										{['tiling','thumbnails','ocr'].map((jobType) => {
-											const job = jobs.filter(j => j.job_type === jobType).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+											const job = getLatestJob(jobType)
 											const status = getJobStatus(jobType)
 											return (
 												<div key={jobType} className="p-2 bg-gray-50 rounded-lg">
