@@ -523,6 +523,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
     db = get_db_session()
     settings = get_settings()
     total_pages = 0  # Initialize at the start to prevent UnboundLocalError
+    extracted_text = []  # Initialize to prevent UnboundLocalError in return statement
 
     try:
         # Update job status
