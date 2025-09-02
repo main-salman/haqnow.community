@@ -235,6 +235,7 @@ def process_document_tiling(self, document_id: int, job_id: int):
     """Generate tiles for a document"""
     db = get_db_session()
     settings = get_settings()
+    total_pages = 0  # Initialize at the start to prevent UnboundLocalError
 
     try:
         # Update job status
@@ -370,6 +371,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
     """Generate thumbnails for a document"""
     db = get_db_session()
     settings = get_settings()
+    total_pages = 0  # Initialize at the start to prevent UnboundLocalError
 
     try:
         # Update job status
@@ -520,6 +522,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
     """Perform OCR on a document"""
     db = get_db_session()
     settings = get_settings()
+    total_pages = 0  # Initialize at the start to prevent UnboundLocalError
 
     try:
         # Update job status
