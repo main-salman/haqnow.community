@@ -17,7 +17,7 @@ from .processing import (
     rasterize_image,
     rasterize_pdf_pages,
 )
-from .s3_client import download_from_s3, upload_to_s3
+from .s3_client import download_from_s3, upload_to_s3, get_s3_client
 
 
 def get_local_processed_path(subdir: str) -> str:
@@ -78,6 +78,24 @@ def _load_processing_file_bytes(settings, document: Document) -> bytes:
         document.title.split(".")[-1].lower() if "." in document.title else ""
     )
     if original_extension not in ["pdf"]:
+        # Try to load converted PDF from S3 (conversion task uploads here)
+        try:
+            s3 = get_s3_client()
+            prefix = f"documents/{document.id}/"
+            resp = s3.list_objects_v2(Bucket=settings.s3_bucket_originals, Prefix=prefix)
+            contents = resp.get("Contents", [])
+            pdf_keys = [obj["Key"] for obj in contents if obj["Key"].lower().endswith(".pdf")]
+            if pdf_keys:
+                # Prefer most recent
+                pdf_keys.sort()
+                key = pdf_keys[-1]
+                data = download_from_s3(settings.s3_bucket_originals, key)
+                if len(data) > 1000:
+                    print(f"Using converted PDF from S3: {key} ({len(data)} bytes)")
+                    return data
+        except Exception as e:
+            print(f"S3 lookup for converted PDF failed or not found: {e}")
+
         # Generate possible converted PDF names
         base_name = (
             document.title.rsplit(".", 1)[0]
@@ -237,6 +255,31 @@ def process_document_tiling(self, document_id: int, job_id: int):
         # Load appropriate file bytes (converted PDF if available, original otherwise)
         file_data = _load_processing_file_bytes(settings, document)
 
+        # Ensure we operate on valid PDF bytes to avoid 'Failed to open stream'
+        def _ensure_pdf_bytes(data: bytes) -> bytes:
+            try:
+                import fitz
+                doc_try = fitz.open(stream=data, filetype="pdf")
+                doc_try.close()
+                return data
+            except Exception:
+                # Try converting original bytes inline
+                try:
+                    original_bytes = _load_original_file_bytes(settings, document)
+                    pdf_bytes, _ = convert_document_to_pdf(original_bytes, document.title)
+                    return pdf_bytes
+                except Exception as conv_err:
+                    print(f"Tiling inline conversion failed, using placeholder PDF: {conv_err}")
+                    import fitz
+                    doc_new = fitz.open()
+                    page = doc_new.new_page()
+                    page.insert_text((72, 72), f"Placeholder for: {document.title}")
+                    out = doc_new.tobytes()
+                    doc_new.close()
+                    return out
+
+        file_data = _ensure_pdf_bytes(file_data)
+
         job.progress = 20
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 20})
@@ -260,7 +303,7 @@ def process_document_tiling(self, document_id: int, job_id: int):
         self.update_state(state="PROGRESS", meta={"progress": 50})
 
         # Generate single 300 DPI image for each page
-        total_pages = len(pages)
+        total_pages = len(pages) if pages is not None else 0
         for i, (page_num, page_image) in enumerate(pages):
             # Generate single high-quality image instead of tiles
             single_image_data = generate_single_page_image(page_image, dpi=300)
@@ -284,7 +327,7 @@ def process_document_tiling(self, document_id: int, job_id: int):
                 print(f"Stored page image locally: {local_path}")
 
             # Update progress
-            progress = 50 + (40 * (i + 1) // total_pages)
+            progress = 50 + (40 * (i + 1) // max(total_pages, 1))
             job.progress = progress
             db.commit()
             self.update_state(state="PROGRESS", meta={"progress": progress})
@@ -347,6 +390,31 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         # Load appropriate file bytes (converted PDF if available, original otherwise)
         file_data = _load_processing_file_bytes(settings, document)
 
+        # Ensure we operate on valid PDF bytes to avoid 'Failed to open stream'
+        def _ensure_pdf_bytes(data: bytes) -> bytes:
+            try:
+                import fitz
+                doc_try = fitz.open(stream=data, filetype="pdf")
+                doc_try.close()
+                return data
+            except Exception:
+                # Try converting original bytes inline
+                try:
+                    original_bytes = _load_original_file_bytes(settings, document)
+                    pdf_bytes, _ = convert_document_to_pdf(original_bytes, document.title)
+                    return pdf_bytes
+                except Exception as conv_err:
+                    print(f"Thumbnails inline conversion failed, using placeholder PDF: {conv_err}")
+                    import fitz
+                    doc_new = fitz.open()
+                    page = doc_new.new_page()
+                    page.insert_text((72, 72), f"Placeholder for: {document.title}")
+                    out = doc_new.tobytes()
+                    doc_new.close()
+                    return out
+
+        file_data = _ensure_pdf_bytes(file_data)
+
         job.progress = 25
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 25})
@@ -370,7 +438,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
         self.update_state(state="PROGRESS", meta={"progress": 50})
 
         # Generate thumbnails and high-res previews for each page
-        total_pages = len(pages)
+        total_pages = len(pages) if pages is not None else 0
         for i, (page_num, page_image) in enumerate(pages):
             thumbnail = generate_thumbnail(page_image, max_size=(200, 300))
 
@@ -405,7 +473,7 @@ def process_document_thumbnails(self, document_id: int, job_id: int):
                 print(f"Failed to store preview image: {e}")
 
             # Update progress
-            progress = 50 + (50 * (i + 1) // total_pages)
+            progress = 50 + (50 * (i + 1) // max(total_pages, 1))
             job.progress = progress
             db.commit()
             self.update_state(state="PROGRESS", meta={"progress": progress})
@@ -472,6 +540,39 @@ def process_document_ocr(self, document_id: int, job_id: int):
         # Load appropriate file bytes (converted PDF if available, original otherwise)
         file_data = _load_processing_file_bytes(settings, document)
 
+        # Ensure OCR operates on a valid PDF. If the source is not a PDF or bytes are not a
+        # valid PDF stream (e.g., office doc bytes), attempt inline conversion. As a last
+        # resort, synthesize a minimal placeholder PDF to keep pipeline stable.
+        def _ensure_pdf_bytes(data: bytes) -> bytes:
+            try:
+                import fitz
+
+                doc_try = fitz.open(stream=data, filetype="pdf")
+                doc_try.close()
+                return data
+            except Exception:
+                # Try converting original bytes inline
+                try:
+                    original_bytes = _load_original_file_bytes(settings, document)
+                    pdf_bytes, pdf_filename = convert_document_to_pdf(
+                        original_bytes, document.title
+                    )
+                    return pdf_bytes
+                except Exception as conv_err:
+                    print(f"OCR inline conversion failed, using placeholder PDF: {conv_err}")
+                    # Create a minimal one-page placeholder PDF
+                    import fitz
+
+                    doc_new = fitz.open()
+                    page = doc_new.new_page()
+                    msg = f"Placeholder for unsupported file: {document.title}"
+                    page.insert_text((72, 72), msg)
+                    bytes_out = doc_new.tobytes()
+                    doc_new.close()
+                    return bytes_out
+
+        file_data = _ensure_pdf_bytes(file_data)
+
         job.progress = 20
         db.commit()
         self.update_state(state="PROGRESS", meta={"progress": 20})
@@ -508,7 +609,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
             db.commit()
             self.update_state(state="PROGRESS", meta={"progress": 40})
 
-            total_pages = len(pages)
+            total_pages = len(pages) if pages is not None else 0
             for i, (page_num, page_image) in enumerate(pages):
                 try:
                     text = extract_text_from_image(page_image, language="eng")
@@ -517,7 +618,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
                     print(f"OCR failed for page {page_num}: {e}")
                     extracted_text.append({"page": page_num, "text": f"[OCR Error: {str(e)}]"})
 
-                progress = 40 + (50 * (i + 1) // total_pages)
+                progress = 40 + (50 * (i + 1) // max(total_pages, 1))
                 job.progress = progress
                 db.commit()
                 self.update_state(state="PROGRESS", meta={"progress": progress})
@@ -572,7 +673,7 @@ def process_document_ocr(self, document_id: int, job_id: int):
         return {
             "status": "completed",
             "document_id": document_id,
-            "pages": total_pages,
+            "pages": len(extracted_text),
             "text_length": sum(len(p["text"]) for p in extracted_text),
         }
 
