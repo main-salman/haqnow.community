@@ -712,7 +712,10 @@ def delete_all_documents(db: Session = Depends(get_db)):
 def get_document_jobs(document_id: int, db: Session = Depends(get_db)):
     """Get processing jobs for a document"""
     jobs = (
-        db.query(ProcessingJob).filter(ProcessingJob.document_id == document_id).all()
+        db.query(ProcessingJob)
+        .filter(ProcessingJob.document_id == document_id)
+        .order_by(ProcessingJob.created_at.desc())
+        .all()
     )
     return [
         {

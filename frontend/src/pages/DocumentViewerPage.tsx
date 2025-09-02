@@ -493,12 +493,12 @@ export default function DocumentViewerPage() {
 	}
 
 	const getJobStatus = (jobType: string) => {
-		const job = jobs.find(j => j.job_type === jobType)
+		const job = jobs.filter(j => j.job_type === jobType).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 		return job?.status || 'pending'
 	}
 
 	const getJobProgress = (jobType: string) => {
-		const job = jobs.find(j => j.job_type === jobType)
+		const job = jobs.filter(j => j.job_type === jobType).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 		return job?.progress || 0
 	}
 
@@ -675,7 +675,7 @@ export default function DocumentViewerPage() {
 									<h3 className="text-sm font-semibold text-gray-900 mb-2">Processing Status</h3>
 									<div className="space-y-2">
 										{['tiling','thumbnails','ocr'].map((jobType) => {
-											const job = jobs.find(j => j.job_type === jobType)
+											const job = jobs.filter(j => j.job_type === jobType).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 											const status = getJobStatus(jobType)
 											return (
 												<div key={jobType} className="p-2 bg-gray-50 rounded-lg">
