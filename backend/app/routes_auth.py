@@ -87,9 +87,32 @@ def get_current_user(
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    if user.role != "admin":
+    if user.role not in ["admin", "superuser"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def require_superuser(user: User = Depends(get_current_user)) -> User:
+    if user.role != "superuser":
+        raise HTTPException(status_code=403, detail="Superuser access required")
+    return user
+
+
+def get_role_hierarchy_level(role: str) -> int:
+    """Get numeric level for role hierarchy (higher = more permissions)"""
+    hierarchy = {
+        "viewer": 1,
+        "contributor": 2,
+        "manager": 3,
+        "admin": 4,
+        "superuser": 5
+    }
+    return hierarchy.get(role, 0)
+
+
+def can_manage_role(manager_role: str, target_role: str) -> bool:
+    """Check if manager_role can manage target_role"""
+    return get_role_hierarchy_level(manager_role) > get_role_hierarchy_level(target_role)
 
 
 @router.on_event("startup")
@@ -105,20 +128,29 @@ def startup_migrate():
 
     db = SessionLocal()
     try:
-        admin_exists = db.query(User).filter(User.role == "admin").first() is not None
-        if not admin_exists:
+        # Check if admin@haqnow.com exists and upgrade to superuser
+        admin_user = db.query(User).filter(User.email == "admin@haqnow.com").first()
+        if admin_user and admin_user.role != "superuser":
+            print(f"Upgrading admin@haqnow.com to superuser role")
+            admin_user.role = "superuser"
+            db.commit()
+        
+        # Ensure at least one superuser exists
+        superuser_exists = db.query(User).filter(User.role == "superuser").first() is not None
+        if not superuser_exists:
             admin_email = os.getenv("ADMIN_EMAIL", "admin@haqnow.com")
             admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
-            admin = User(
+            superuser = User(
                 email=admin_email,
-                full_name="Admin",
-                role="admin",
+                full_name="Super Admin",
+                role="superuser",
                 password_hash=hash_password(admin_password),
                 is_active=True,
                 registration_status="approved",
             )
-            db.add(admin)
+            db.add(superuser)
             db.commit()
+            print(f"Created initial superuser: {admin_email}")
     finally:
         db.close()
 
@@ -148,11 +180,16 @@ def register_user(payload: UserRegister, db: Session = Depends(get_db)):
 
 @router.post("/admin/users", response_model=UserOut)
 def admin_create_user(
-    payload: UserCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)
+    payload: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin)
 ):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
+    
+    # Check if current user can create this role
+    if not can_manage_role(current_user.role, payload.role):
+        raise HTTPException(status_code=403, detail=f"Cannot create user with role '{payload.role}'")
+    
     user = User(
         email=payload.email,
         full_name=payload.full_name,
@@ -173,6 +210,39 @@ def admin_create_user(
 def admin_list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     users = db.query(User).all()
     return users
+
+
+@router.put("/admin/users/{user_id}/role", response_model=UserOut)
+def admin_update_user_role(
+    user_id: int,
+    role_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Update a user's role (superuser can change any role, admin cannot change superuser/admin roles)"""
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    new_role = role_data.get("role")
+    if not new_role:
+        raise HTTPException(status_code=400, detail="Role is required")
+    
+    # Prevent self-demotion
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
+    
+    # Check if current user can manage both the target's current role and new role
+    if not can_manage_role(current_user.role, target_user.role):
+        raise HTTPException(status_code=403, detail=f"Cannot modify user with role '{target_user.role}'")
+    
+    if not can_manage_role(current_user.role, new_role):
+        raise HTTPException(status_code=403, detail=f"Cannot assign role '{new_role}'")
+    
+    target_user.role = new_role
+    db.commit()
+    db.refresh(target_user)
+    return target_user
 
 
 @router.get("/admin/users/pending", response_model=list[UserOut])

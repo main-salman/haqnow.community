@@ -14,16 +14,18 @@ import {
   CheckCircle,
   AlertCircle,
   Calendar,
-  Shield
+  Shield,
+  Edit3
 } from 'lucide-react'
 import { adminApi, User, ApiKey } from '../services/api'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '../services/auth'
 
 const userSchema = z.object({
   email: z.string().email('Invalid email address'),
   full_name: z.string().optional(),
-  role: z.enum(['admin', 'manager', 'contributor', 'viewer']),
+  role: z.enum(['superuser', 'admin', 'manager', 'contributor', 'viewer']),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 })
 
@@ -41,8 +43,11 @@ export default function AdminPage() {
   const [showCreateApiKey, setShowCreateApiKey] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
+  const [editingUserId, setEditingUserId] = useState<number | null>(null)
+  const [editingRole, setEditingRole] = useState<string>('')
 
   const queryClient = useQueryClient()
+  const { user: currentUser } = useAuthStore()
 
   // Users queries and mutations
   const { data: users = [], isLoading: usersLoading } = useQuery({
@@ -60,6 +65,22 @@ export default function AdminPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || 'Failed to create user')
+    },
+  })
+
+  const updateUserRoleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: number; role: string }) =>
+      adminApi.updateUserRole(userId, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      setEditingUserId(null)
+      setEditingRole('')
+      toast.success('User role updated successfully')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to update user role')
+      setEditingUserId(null)
+      setEditingRole('')
     },
   })
 
@@ -129,8 +150,64 @@ export default function AdminPage() {
     toast.success('API key copied to clipboard')
   }
 
+  const canManageUser = (targetUser: User) => {
+    if (!currentUser) return false
+    
+    // Can't manage yourself
+    if (targetUser.id === currentUser.id) return false
+    
+    // Role hierarchy levels
+    const roleHierarchy = {
+      viewer: 1,
+      contributor: 2,
+      manager: 3,
+      admin: 4,
+      superuser: 5
+    }
+    
+    const currentLevel = roleHierarchy[currentUser.role as keyof typeof roleHierarchy] || 0
+    const targetLevel = roleHierarchy[targetUser.role as keyof typeof roleHierarchy] || 0
+    
+    return currentLevel > targetLevel
+  }
+
+  const getAvailableRoles = (currentUserRole: string) => {
+    const allRoles = ['viewer', 'contributor', 'manager', 'admin', 'superuser']
+    const roleHierarchy = {
+      viewer: 1,
+      contributor: 2,
+      manager: 3,
+      admin: 4,
+      superuser: 5
+    }
+    
+    const currentLevel = roleHierarchy[currentUserRole as keyof typeof roleHierarchy] || 0
+    return allRoles.filter(role => {
+      const roleLevel = roleHierarchy[role as keyof typeof roleHierarchy] || 0
+      return roleLevel < currentLevel
+    })
+  }
+
+  const handleRoleEdit = (user: User) => {
+    setEditingUserId(user.id)
+    setEditingRole(user.role)
+  }
+
+  const handleRoleUpdate = (userId: number) => {
+    if (editingRole) {
+      updateUserRoleMutation.mutate({ userId, role: editingRole })
+    }
+  }
+
+  const handleRoleCancel = () => {
+    setEditingUserId(null)
+    setEditingRole('')
+  }
+
   const getRoleColor = (role: string) => {
     switch (role) {
+      case 'superuser':
+        return 'bg-purple-100 text-purple-800'
       case 'admin':
         return 'bg-red-100 text-red-800'
       case 'manager':
@@ -238,6 +315,7 @@ export default function AdminPage() {
                       <option value="contributor">Contributor</option>
                       <option value="manager">Manager</option>
                       <option value="admin">Admin</option>
+                      <option value="superuser">Superuser</option>
                     </select>
                   </div>
 
@@ -316,12 +394,52 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <span className={clsx(
-                        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                        getRoleColor(user.role)
-                      )}>
-                        {user.role}
-                      </span>
+                      {editingUserId === user.id ? (
+                        <div className="flex items-center space-x-2">
+                          <select
+                            value={editingRole}
+                            onChange={(e) => setEditingRole(e.target.value)}
+                            className="text-xs px-2 py-1 border border-gray-300 rounded"
+                          >
+                            {getAvailableRoles(currentUser?.role || '').map(role => (
+                              <option key={role} value={role}>
+                                {role.charAt(0).toUpperCase() + role.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleRoleUpdate(user.id)}
+                            disabled={updateUserRoleMutation.isPending}
+                            className="text-green-600 hover:text-green-800 disabled:opacity-50"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={handleRoleCancel}
+                            className="text-gray-600 hover:text-gray-800"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className={clsx(
+                            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                            getRoleColor(user.role)
+                          )}>
+                            {user.role}
+                          </span>
+                          {canManageUser(user) && (
+                            <button
+                              onClick={() => handleRoleEdit(user)}
+                              className="text-gray-400 hover:text-gray-600"
+                              title="Edit role"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </>
+                      )}
                       <div className="flex items-center">
                         {user.is_active ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />

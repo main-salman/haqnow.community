@@ -177,6 +177,8 @@ export const adminApi = {
     role: string
     password: string
   }) => axios.post<User>('/api/auth/admin/users', data),
+  updateUserRole: (userId: number, data: { role: string }) =>
+    axios.put<User>(`/api/auth/admin/users/${userId}/role`, data),
 
   // API Keys
   listApiKeys: () => axios.get<ApiKey[]>('/api/auth/admin/api-keys'),
