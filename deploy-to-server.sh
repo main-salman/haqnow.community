@@ -5,7 +5,7 @@ set -e
 # Following cursor rule: Copy .env, commit to git, pull from GitHub on server
 echo "🚀 Deploying Haqnow Community Platform to Exoscale..."
 
-SERVER_IP="185.19.30.32"
+SERVER_IP="${SERVER_IP:-91.92.153.62}"
 # Use absolute path to avoid tilde expansion issues in non-interactive contexts
 SSH_KEY="$HOME/.ssh/haqnow_deploy_key"
 REPO_URL="https://github.com/main-salman/haqnow.community.git"
