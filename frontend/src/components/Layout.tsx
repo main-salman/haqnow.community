@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
 	FileText,
 	Search,
@@ -18,6 +18,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
 	const { user, logout } = useAuthStore()
 	const location = useLocation()
+	const navigate = useNavigate()
 
 	const navigation = [
 		{ name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -52,6 +53,12 @@ export default function Layout({ children }: LayoutProps) {
 									<Link
 										key={item.name}
 										to={item.href}
+										onClick={(e) => {
+											e.preventDefault()
+											navigate(item.href)
+											// signal documents page to focus input (handled there)
+											window.dispatchEvent(new Event('focus-docs-search'))
+										}}
 										className={clsx(
 											'inline-flex items-center px-3 py-2 rounded-xl text-sm font-semibold transition-colors',
 											isActive ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
@@ -60,7 +67,7 @@ export default function Layout({ children }: LayoutProps) {
 										<item.icon className={clsx('w-4 h-4 mr-2', isActive ? 'text-white' : 'text-gray-400')} />
 										{item.name}
 									</Link>
-							)
+								)
 							})}
 						</nav>
 

@@ -12,7 +12,18 @@ async def test_admin_create_and_login(tmp_path):
 
         unique_email = f"alice{int(time.time())}@example.com"
 
-        # Create user
+        # First login as the default superuser to create an admin user
+        login_resp = await ac.post(
+            "/auth/login",
+            json={
+                "email": "admin@haqnow.com",
+                "password": "changeme123",
+            },
+        )
+        assert login_resp.status_code == 200, login_resp.text
+        token = login_resp.json()["access_token"]
+
+        # Create user as superuser
         resp = await ac.post(
             "/auth/admin/users",
             json={
@@ -21,6 +32,7 @@ async def test_admin_create_and_login(tmp_path):
                 "role": "admin",
                 "password": "P@ssw0rd!",
             },
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200, resp.text
 

@@ -23,7 +23,7 @@ import {
   File,
   Trash2
 } from 'lucide-react'
-import { documentsApi, Document, searchApi } from '../services/api'
+import { documentsApi, Document } from '../services/api'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import DocumentUpload from '../components/DocumentUpload'
@@ -47,21 +47,7 @@ export default function DocumentsPage() {
 
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ['documents', searchQuery, filters],
-    queryFn: async () => {
-      const hasSearch = !!searchQuery.trim() || Object.values(filters).some(f => !!f)
-      if (hasSearch) {
-        const res = await searchApi.searchAdvanced({
-          q: searchQuery.trim() || '',
-          source: filters.source || undefined,
-          language: filters.language || undefined,
-          status: filters.status || undefined,
-          limit: 100,
-          offset: 0,
-        })
-        return res.data as Document[]
-      }
-      return (await documentsApi.list()).data as Document[]
-    },
+    queryFn: () => documentsApi.list().then(res => res.data),
   })
 
   const deleteMutation = useMutation({
@@ -77,8 +63,20 @@ export default function DocumentsPage() {
     }
   })
 
-  // When backend search is used, results are already filtered
-  const filteredDocuments = documents
+  // Filter documents based on search and filters
+  const filteredDocuments = documents.filter(doc => {
+    const matchesSearch = !searchQuery ||
+      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (doc.description && doc.description.toLowerCase().includes(searchQuery.toLowerCase()))
+
+    const matchesSource = !filters.source ||
+      (doc.source && doc.source.toLowerCase().includes(filters.source.toLowerCase()))
+
+    const matchesLanguage = !filters.language || doc.language === filters.language
+    const matchesStatus = !filters.status || doc.status === filters.status
+
+    return matchesSearch && matchesSource && matchesLanguage && matchesStatus
+  })
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -285,7 +283,10 @@ export default function DocumentsPage() {
         {/* Results Summary */}
         <div className="flex items-center justify-between mb-6">
           <div className="text-sm text-gray-600">
-            {`${filteredDocuments.length} files`}
+            {filteredDocuments.length === documents.length
+              ? `${documents.length} files`
+              : `${filteredDocuments.length} of ${documents.length} files`
+            }
           </div>
         </div>
 

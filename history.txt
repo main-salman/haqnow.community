@@ -1,3 +1,8 @@
+2025-08-29:
+- fix(backend): Guard initialization/usage of total_pages in tiling, thumbnails, OCR tasks to prevent UnboundLocalError
+- feat(frontend): Ensure top-nav Search navigates to Documents and focuses search input
+- ops: Rebuilt/redeployed API and frontend; requeued OCR for docs missing text (to index terms like 'bipartisan')
+- verify: Enqueued test OCR job and saw no total_pages errors in logs
 2025-08-28: WORKER STABILITY AND PROCESSING ISSUE RESOLUTION
 
 **CRITICAL ISSUE RESOLVED**: User uploaded 27 new documents that were getting stuck in processing due to worker crashes.
